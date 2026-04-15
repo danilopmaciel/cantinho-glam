@@ -1,0 +1,29 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente (NUNCA subir ao GitHub)
+.env
+.env.local
+.env.production
+
+# Build
+dist/
+dist-ssr/
+build/
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Scripts de setup local (contêm credenciais, não vão ao GitHub)
+setup-github.ps1
+setup-supabase.ps1
