@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import ProductForm from './pages/ProductForm'
 import NewSale from './pages/NewSale'
 import Revenue from './pages/Revenue'
+import ChangePassword from './pages/ChangePassword'
 import { useAuth } from './contexts/AuthContext'
 
 function AppRoutes() {
@@ -20,6 +21,7 @@ function AppRoutes() {
         <Route path="/produtos/:id/editar" element={<ProtectedRoute><ProductForm /></ProtectedRoute>} />
         <Route path="/vender" element={<ProtectedRoute><NewSale /></ProtectedRoute>} />
         <Route path="/faturamento" element={<ProtectedRoute><Revenue /></ProtectedRoute>} />
+        <Route path="/trocar-senha" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
       {user && <BottomNav />}
