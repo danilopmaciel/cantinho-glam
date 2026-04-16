@@ -1,18 +1,22 @@
-import { Pencil, Trash2, Tag } from 'lucide-react'
+import { Pencil, Trash2, Tag, Package } from 'lucide-react'
 
 const formatCurrency = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 
 export default function ProductCard({ product, onEdit, onDelete }) {
+  const qty = product.quantity ?? 0
+  const stockColor = qty === 0
+    ? 'bg-red-100 text-red-600'
+    : qty <= 3
+      ? 'bg-yellow-100 text-yellow-700'
+      : 'bg-blue-100 text-blue-700'
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow duration-200">
       {/* Imagem */}
       {product.image_url ? (
-        <img
-          src={product.image_url}
-          alt={`${product.brand} ${product.type}`}
-          className="w-full h-44 object-cover"
-        />
+        <img src={product.image_url} alt={`${product.brand} ${product.type}`}
+          className="w-full h-44 object-cover" />
       ) : (
         <div className="w-full h-44 bg-gradient-to-br from-rose-50 to-pink-100 flex items-center justify-center">
           <Tag className="w-12 h-12 text-rose-200" />
@@ -28,18 +32,12 @@ export default function ProductCard({ product, onEdit, onDelete }) {
             <p className="text-sm text-gray-500 truncate">{product.type}</p>
           </div>
           <div className="flex gap-1 shrink-0">
-            <button
-              onClick={onEdit}
-              title="Editar"
-              className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-            >
+            <button onClick={onEdit} title="Editar"
+              className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors">
               <Pencil className="w-4 h-4" />
             </button>
-            <button
-              onClick={onDelete}
-              title="Excluir"
-              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-            >
+            <button onClick={onDelete} title="Excluir"
+              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
@@ -57,6 +55,10 @@ export default function ProductCard({ product, onEdit, onDelete }) {
               {product.size}
             </span>
           )}
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${stockColor}`}>
+            <Package className="w-3 h-3" />
+            {qty === 0 ? 'Sem estoque' : `${qty} un.`}
+          </span>
         </div>
 
         {/* Preços */}
@@ -73,12 +75,10 @@ export default function ProductCard({ product, onEdit, onDelete }) {
           </div>
         </div>
 
-        {/* Lucro por unidade */}
         <p className="text-xs text-gray-400 mt-1.5">
           Lucro: <span className="text-green-600 font-medium">
             {formatCurrency(product.sale_price - product.purchase_price)}
-          </span>
-          {' '}/ unidade
+          </span> / unidade
         </p>
       </div>
     </div>
