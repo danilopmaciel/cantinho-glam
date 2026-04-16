@@ -127,7 +127,9 @@ export default function NewSale() {
               <option value="">Selecione um produto...</option>
               {products.map(p => (
                 <option key={p.id} value={p.id} disabled={p.quantity === 0}>
-                  {p.brand} — {p.type}{p.color ? ` (${p.color})` : ''}
+                  {p.name || p.brand}
+                  {p.brand && p.name ? ` (${p.brand})` : ''}
+                  {p.color ? ` · ${p.color}` : ''}
                   {p.quantity === 0 ? ' — SEM ESTOQUE' : ` — ${p.quantity} un.`}
                 </option>
               ))}
@@ -144,8 +146,10 @@ export default function NewSale() {
                   </div>
               }
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-gray-800">{selected.brand}</p>
-                <p className="text-sm text-gray-500">{selected.type}{selected.color ? ` · ${selected.color}` : ''}</p>
+                <p className="font-bold text-gray-800">{selected.name || selected.brand}</p>
+                <p className="text-sm text-gray-500">
+                  {[selected.brand, selected.type, selected.color].filter(Boolean).join(' · ')}
+                </p>
                 <div className="flex items-center gap-3 mt-1">
                   <span className="text-rose-600 font-bold">{fmt(selected.sale_price)}</span>
                   <span className="text-xs text-gray-400">Estoque: {selected.quantity ?? 0} un.</span>

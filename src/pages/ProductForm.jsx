@@ -4,13 +4,6 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { ArrowLeft, Save, Camera, ImageIcon, X, TrendingUp, ZapOff, Package, History } from 'lucide-react'
 
-const PRODUCT_TYPES = [
-  'Base', 'Batom', 'Blush', 'Bronzer', 'Corretivo', 'Delineador',
-  'Esmalte', 'Gloss Labial', 'Hidratante', 'Iluminador', 'Máscara para Cílios',
-  'Perfume / Colônia', 'Primer', 'Protetor Solar', 'Rímel', 'Sérum',
-  'Sombra', 'Tônico Facial', 'Outro',
-]
-
 const ADJUSTMENT_REASONS = [
   'Compra / Reposição de estoque',
   'Ajuste de inventário',
@@ -69,7 +62,7 @@ export default function ProductForm() {
   const [webcamReady, setWebcamReady] = useState(false)
 
   const [form, setForm] = useState({
-    brand: '', type: '', color: '', size: '',
+    name: '', brand: '', type: '', color: '', size: '',
     purchase_price: '', profit_margin: '', sale_price: '',
     quantity: '',
   })
@@ -87,6 +80,7 @@ export default function ProductForm() {
     } else if (data) {
       setCurrentStock(data.quantity ?? 0)
       setForm({
+        name:  data.name  || '',
         brand: data.brand || '', type: data.type || '',
         color: data.color || '', size: data.size || '',
         purchase_price: data.purchase_price?.toString() || '',
@@ -206,8 +200,7 @@ export default function ProductForm() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-    if (!form.brand.trim()) return setError('Informe a marca do produto.')
-    if (!form.type)         return setError('Selecione o tipo do produto.')
+    if (!form.name.trim()) return setError('Informe o nome do produto.')
     if (!form.purchase_price || parseFloat(form.purchase_price) <= 0)
       return setError('Informe o preço de compra.')
     if (isEditing && adjustQty !== '' && newStockAfter < 0)
@@ -221,7 +214,8 @@ export default function ProductForm() {
         : (parseInt(form.quantity) || 0)                     // novo: quantidade informada
 
       const productData = {
-        brand: form.brand.trim(), type: form.type,
+        name:  form.name.trim(),
+        brand: form.brand.trim() || null, type: form.type.trim() || null,
         color: form.color.trim() || null, size: form.size.trim() || null,
         purchase_price: parseFloat(form.purchase_price),
         profit_margin:  parseFloat(form.profit_margin) || 0,
@@ -336,26 +330,30 @@ export default function ProductForm() {
           <canvas ref={canvasRef} className="hidden" />
         </div>
 
-        {/* Marca */}
+        {/* Nome do Produto */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-            Marca <span className="text-rose-500">*</span>
+            Nome do Produto <span className="text-rose-500">*</span>
           </label>
-          <input type="text" value={form.brand} onChange={(e) => handleChange('brand', e.target.value)}
-            placeholder="Ex: MAC, L'Oréal, NYX, Maybelline..."
+          <input type="text" value={form.name} onChange={(e) => handleChange('name', e.target.value)}
+            placeholder="Ex: Batom Vermelho Intenso, Base Líquida..."
             className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white" />
         </div>
 
-        {/* Tipo */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-            Tipo <span className="text-rose-500">*</span>
-          </label>
-          <select value={form.type} onChange={(e) => handleChange('type', e.target.value)}
-            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-rose-400 appearance-none">
-            <option value="">Selecione o tipo...</option>
-            {PRODUCT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
+        {/* Marca e Tipo */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Marca</label>
+            <input type="text" value={form.brand} onChange={(e) => handleChange('brand', e.target.value)}
+              placeholder="Ex: MAC, L'Oréal..."
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tipo</label>
+            <input type="text" value={form.type} onChange={(e) => handleChange('type', e.target.value)}
+              placeholder="Ex: Batom, Base, Sérum..."
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white" />
+          </div>
         </div>
 
         {/* Cor e Tamanho */}

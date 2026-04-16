@@ -15,7 +15,7 @@ export default function ProductCard({ product, onEdit, onDelete }) {
     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow duration-200">
       {/* Imagem */}
       {product.image_url ? (
-        <img src={product.image_url} alt={`${product.brand} ${product.type}`}
+        <img src={product.image_url} alt={product.name || `${product.brand} ${product.type}`}
           className="w-full h-44 object-cover" />
       ) : (
         <div className="w-full h-44 bg-gradient-to-br from-rose-50 to-pink-100 flex items-center justify-center">
@@ -28,8 +28,10 @@ export default function ProductCard({ product, onEdit, onDelete }) {
         {/* Título + ações */}
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="min-w-0">
-            <h3 className="font-bold text-gray-800 truncate">{product.brand}</h3>
-            <p className="text-sm text-gray-500 truncate">{product.type}</p>
+            <h3 className="font-bold text-gray-800 truncate">{product.name || product.brand}</h3>
+            <p className="text-sm text-gray-500 truncate">
+              {[product.brand, product.type].filter(Boolean).join(' · ') || ' '}
+            </p>
           </div>
           <div className="flex gap-1 shrink-0">
             <button onClick={onEdit} title="Editar"
