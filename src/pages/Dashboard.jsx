@@ -127,7 +127,7 @@ export default function Dashboard() {
       {/* FAB - Botão de adicionar */}
       <button
         onClick={() => navigate('/produtos/novo')}
-        className="fixed bottom-6 right-6 bg-rose-500 hover:bg-rose-600 active:scale-95 text-white rounded-2xl px-5 py-3.5 shadow-lg shadow-rose-200 transition-all flex items-center gap-2 font-semibold"
+        className="fixed bottom-20 right-6 bg-rose-500 hover:bg-rose-600 active:scale-95 text-white rounded-2xl px-5 py-3.5 shadow-lg shadow-rose-200 transition-all flex items-center gap-2 font-semibold"
       >
         <Plus className="w-5 h-5" />
         <span className="hidden sm:inline">Novo produto</span>
