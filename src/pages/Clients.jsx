@@ -7,7 +7,7 @@ import {
 
 const emptyForm = {
   name: '', phone: '', cpf_cnpj: '',
-  cep: '', address: '', maps_link: '', notes: '',
+  cep: '', address: '', number: '', complement: '', maps_link: '', notes: '',
 }
 
 const fmtPhone = (v) => {
@@ -72,9 +72,11 @@ export default function Clients() {
       name:      client.name || '',
       phone:     client.phone || '',
       cpf_cnpj:  client.cpf_cnpj || '',
-      cep:       client.cep || '',
-      address:   client.address || '',
-      maps_link: client.maps_link || '',
+      cep:        client.cep        || '',
+      address:    client.address    || '',
+      number:     client.number     || '',
+      complement: client.complement || '',
+      maps_link:  client.maps_link  || '',
       notes:     client.notes || '',
     })
     setEditingId(client.id)
@@ -124,10 +126,12 @@ export default function Clients() {
       const payload = {
         name:      form.name.trim(),
         phone:     form.phone.trim(),
-        cpf_cnpj:  form.cpf_cnpj.trim() || null,
-        cep:       form.cep.trim() || null,
-        address:   form.address.trim() || null,
-        maps_link: form.maps_link.trim() || null,
+        cpf_cnpj:   form.cpf_cnpj.trim()   || null,
+        cep:        form.cep.trim()        || null,
+        address:    form.address.trim()    || null,
+        number:     form.number.trim()     || null,
+        complement: form.complement.trim() || null,
+        maps_link:  form.maps_link.trim()  || null,
         notes:     form.notes.trim() || null,
         updated_at: new Date().toISOString(),
       }
@@ -227,7 +231,7 @@ export default function Clients() {
                   </div>
                   {/* Ações */}
                   <div className="flex items-center gap-1 shrink-0">
-                    {(client.cpf_cnpj || client.address || client.maps_link || client.notes) && (
+                    {(client.cpf_cnpj || client.address || client.number || client.complement || client.maps_link || client.notes) && (
                       <button onClick={() => setExpandedId(expandedId === client.id ? null : client.id)}
                         className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
                         <ChevronDown className={`w-4 h-4 transition-transform ${expandedId === client.id ? 'rotate-180' : ''}`} />
@@ -253,10 +257,15 @@ export default function Clients() {
                         <span className="font-medium text-gray-500">CPF/CNPJ:</span> {client.cpf_cnpj}
                       </p>
                     )}
-                    {client.address && (
+                    {(client.address || client.number) && (
                       <p className="flex items-start gap-2 text-gray-600">
                         <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0 mt-0.5" />
-                        <span>{client.address}{client.cep ? ` — CEP ${client.cep}` : ''}</span>
+                        <span>
+                          {client.address}
+                          {client.number     ? `, nº ${client.number}`        : ''}
+                          {client.complement ? ` — ${client.complement}`      : ''}
+                          {client.cep        ? ` · CEP ${client.cep}`         : ''}
+                        </span>
                       </p>
                     )}
                     {client.maps_link && (
@@ -349,12 +358,22 @@ export default function Clients() {
                 <p className="text-xs text-gray-400 mt-1">O endereço é preenchido automaticamente pelo CEP.</p>
               </div>
 
-              {/* Endereço */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Endereço</label>
-                <input type="text" value={form.address}
-                  onChange={e => handleChange('address', e.target.value)}
-                  placeholder="Rua, número, bairro, cidade..."
+              {/* Endereço + Número */}
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">Endereço</label>
+                <div className="flex gap-2">
+                  <input type="text" value={form.address}
+                    onChange={e => handleChange('address', e.target.value)}
+                    placeholder="Rua, bairro, cidade..."
+                    className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white text-sm" />
+                  <input type="text" value={form.number}
+                    onChange={e => handleChange('number', e.target.value)}
+                    placeholder="Nº"
+                    className="w-20 border border-gray-200 rounded-xl px-3 py-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white text-sm text-center" />
+                </div>
+                <input type="text" value={form.complement}
+                  onChange={e => handleChange('complement', e.target.value)}
+                  placeholder="Complemento (Apto, Bloco, Casa...)"
                   className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white text-sm" />
               </div>
 
