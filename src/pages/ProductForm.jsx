@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { ArrowLeft, Save, Camera, ImageIcon, X, TrendingUp, ZapOff, Package, History } from 'lucide-react'
+import { ArrowLeft, Save, Camera, ImageIcon, X, TrendingUp, ZapOff, Package, History, Sparkles } from 'lucide-react'
 
 const ADJUSTMENT_REASONS = [
   'Compra / Reposição de estoque',
@@ -60,6 +60,11 @@ export default function ProductForm() {
   const [showWebcam, setShowWebcam] = useState(false)
   const [webcamError, setWebcamError] = useState('')
   const [webcamReady, setWebcamReady] = useState(false)
+
+  // Estado reconhecimento IA
+  const [aiLoading, setAiLoading]   = useState(false)
+  const [aiMessage, setAiMessage]   = useState('')  // '' | 'ok' | 'erro'
+  const [aiStatus, setAiStatus]     = useState('')  // '' | 'ok' | 'error'
 
   const [form, setForm] = useState({
     name: '', brand: '', type: '', color: '', size: '',
@@ -129,6 +134,8 @@ export default function ProductForm() {
     if (file.size > 5 * 1024 * 1024) { setError('A imagem deve ter no máximo 5MB.'); return }
     setImageFile(file)
     setError('')
+    setAiMessage('')
+    setAiStatus('')
     const reader = new FileReader()
     reader.onloadend = () => setImagePreview(reader.result)
     reader.readAsDataURL(file)
@@ -136,6 +143,7 @@ export default function ProductForm() {
 
   const removeImage = () => {
     setImageFile(null); setImagePreview(null)
+    setAiMessage(''); setAiStatus('')
     if (fileInputRef.current)   fileInputRef.current.value   = ''
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
@@ -184,6 +192,100 @@ export default function ProductForm() {
   }, [])
 
   const closeWebcam = () => { stopStream(); setShowWebcam(false); setWebcamReady(false); setWebcamError('') }
+  // ────────────────────────────────────────────────────────
+
+  // ── Reconhecimento com IA (Gemini) ──────────────────────
+  const recognizeWithAI = async () => {
+    if (!imagePreview) return
+    setAiLoading(true)
+    setAiMessage('')
+    setAiStatus('')
+    try {
+      // Extrair base64 e mime type da imagem
+      let base64Data = ''
+      let mimeType   = 'image/jpeg'
+
+      if (imagePreview.startsWith('data:')) {
+        const [header, data] = imagePreview.split(',')
+        base64Data = data
+        mimeType   = header.match(/data:([^;]+)/)?.[1] || 'image/jpeg'
+      } else {
+        // Imagem já salva — buscar via fetch e converter
+        const res  = await fetch(imagePreview)
+        const blob = await res.blob()
+        mimeType   = blob.type || 'image/jpeg'
+        const buf  = await blob.arrayBuffer()
+        base64Data = btoa(String.fromCharCode(...new Uint8Array(buf)))
+      }
+
+      const prompt = `Você é um especialista em produtos de beleza e cosméticos. Analise a imagem fornecida e identifique o produto. Responda SOMENTE com um objeto JSON válido, sem markdown, sem explicações, sem texto fora do JSON:
+{
+  "name": "nome completo do produto conforme embalagem",
+  "brand": "marca do produto",
+  "type": "categoria do produto (ex: batom, base líquida, sérum, shampoo, perfume, esmalte...)",
+  "color": "cor ou tom do produto se visível, caso contrário null",
+  "size": "volume ou peso se visível na embalagem (ex: 30ml, 50g, 100ml), caso contrário null",
+  "quantity": 1
+}
+Se a imagem não mostrar um produto de beleza identificável, responda: {"error": true}`
+
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: prompt },
+                { inline_data: { mime_type: mimeType, data: base64Data } },
+              ],
+            }],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
+          }),
+        }
+      )
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}))
+        throw new Error(errBody?.error?.message || `HTTP ${res.status}`)
+      }
+
+      const json    = await res.json()
+      const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || ''
+
+      // Remove blocos de markdown caso o modelo os inclua
+      const cleaned = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+      const parsed  = JSON.parse(cleaned)
+
+      if (parsed.error) {
+        setAiMessage('Não foi possível identificar o produto na imagem.')
+        setAiStatus('error')
+        return
+      }
+
+      // Preenche os campos do formulário
+      setForm(prev => ({
+        ...prev,
+        name:     parsed.name  || prev.name,
+        brand:    parsed.brand || prev.brand,
+        type:     parsed.type  || prev.type,
+        color:    parsed.color || prev.color,
+        size:     parsed.size  || prev.size,
+        quantity: !isEditing && parsed.quantity ? String(parsed.quantity) : prev.quantity,
+      }))
+
+      setAiMessage('Produto identificado! Confira os campos e ajuste se necessário.')
+      setAiStatus('ok')
+    } catch (err) {
+      console.error('Gemini error:', err)
+      setAiMessage('Não foi possível identificar o produto. Verifique a imagem e tente novamente.')
+      setAiStatus('error')
+    } finally {
+      setAiLoading(false)
+    }
+  }
   // ────────────────────────────────────────────────────────
 
   const uploadImage = async (productId) => {
@@ -328,6 +430,42 @@ export default function ProductForm() {
           <input ref={fileInputRef} type="file" accept="image/*"
             className="hidden" onChange={(e) => handleImageSelect(e.target.files?.[0])} />
           <canvas ref={canvasRef} className="hidden" />
+
+          {/* Botão Reconhecer com IA — aparece quando há imagem */}
+          {imagePreview && (
+            <div className="mt-3 space-y-2">
+              <button
+                type="button"
+                onClick={recognizeWithAI}
+                disabled={aiLoading}
+                className="w-full flex items-center justify-center gap-2 bg-violet-500 hover:bg-violet-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-colors shadow-sm shadow-violet-200">
+                {aiLoading
+                  ? <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Analisando imagem...
+                    </>
+                  : <>
+                      <Sparkles className="w-4 h-4" />
+                      Reconhecer com IA
+                    </>
+                }
+              </button>
+
+              {aiMessage && (
+                <div className={`flex items-start gap-2 px-3 py-2.5 rounded-xl text-sm ${
+                  aiStatus === 'ok'
+                    ? 'bg-violet-50 border border-violet-200 text-violet-700'
+                    : 'bg-red-50 border border-red-200 text-red-600'
+                }`}>
+                  {aiStatus === 'ok'
+                    ? <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
+                    : <span className="shrink-0">⚠️</span>
+                  }
+                  {aiMessage}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Nome do Produto */}
