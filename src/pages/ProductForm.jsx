@@ -218,16 +218,9 @@ export default function ProductForm() {
         base64Data = btoa(String.fromCharCode(...new Uint8Array(buf)))
       }
 
-      const prompt = `Você é um especialista em produtos de beleza e cosméticos. Analise a imagem fornecida e identifique o produto. Responda SOMENTE com um objeto JSON válido, sem markdown, sem explicações, sem texto fora do JSON:
-{
-  "name": "nome completo do produto conforme embalagem",
-  "brand": "marca do produto",
-  "type": "categoria do produto (ex: batom, base líquida, sérum, shampoo, perfume, esmalte...)",
-  "color": "cor ou tom do produto se visível, caso contrário null",
-  "size": "volume ou peso se visível na embalagem (ex: 30ml, 50g, 100ml), caso contrário null",
-  "quantity": 1
-}
-Se a imagem não mostrar um produto de beleza identificável, responda: {"error": true}`
+      const prompt = `Analise a imagem e identifique o produto de beleza/cosméticos. Responda APENAS com JSON puro, sem markdown, sem explicações:
+{"name":"nome do produto","brand":"marca","type":"tipo (esmalte, batom, base, etc)","color":"cor ou null","size":"tamanho/volume ou null","quantity":1}
+Se não identificar: {"error":true}`
 
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY
       const res = await fetch(
@@ -245,7 +238,7 @@ Se a imagem não mostrar um produto de beleza identificável, responda: {"error"
                 { inline_data: { mime_type: mimeType, data: base64Data } },
               ],
             }],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
+            generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
           }),
         }
       )
@@ -268,9 +261,11 @@ Se a imagem não mostrar um produto de beleza identificável, responda: {"error"
 
       if (!rawText) throw new Error('Resposta vazia da API.')
 
-      // Remove blocos de markdown caso o modelo os inclua
-      const cleaned = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
-      const parsed  = JSON.parse(cleaned)
+      // Remove blocos de markdown e extrai o objeto JSON da resposta
+      const stripped = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+      const jsonMatch = stripped.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) throw new Error('Resposta da IA não continha JSON válido.')
+      const parsed = JSON.parse(jsonMatch[0])
 
       if (parsed.error) {
         setAiMessage('Produto não identificado na imagem. Tente com uma foto mais clara.')
