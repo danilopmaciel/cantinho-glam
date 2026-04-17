@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import {
   Users, Plus, Search, Pencil, Trash2, X, Save,
   Phone, MapPin, FileText, User, ExternalLink, ChevronDown, Navigation,
-  ShoppingBag, Tag
+  ShoppingBag, Tag, Copy, Check, Car
 } from 'lucide-react'
 
 const fmt = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0)
@@ -33,6 +33,23 @@ const mapsNavUrl = (client) => {
     .filter(Boolean).join(', ')
 
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`
+}
+
+// Endereço formatado para entrega: "Rua X, 123, Cidade, SP, CEP"
+const buildDeliveryAddress = (client) => {
+  const parts = (client.address || '').split(',').map(p => p.trim()).filter(Boolean)
+  const street = parts[0] || ''
+  const city   = parts.length >= 4 ? parts[2] : (parts[1] || '')
+  const state  = parts.length >= 4 ? parts[3] : ''
+  return [street, client.number, city, state, client.cep].filter(Boolean).join(', ')
+}
+
+// URL deep link para Uber (abre app no celular, site no desktop)
+const uberUrl = (client) => {
+  const addr = buildDeliveryAddress(client)
+  const encoded = encodeURIComponent(addr)
+  const name    = encodeURIComponent(client.name)
+  return `https://m.uber.com/ul/?action=setPickup&dropoff[formatted_address]=${encoded}&dropoff[nickname]=${name}`
 }
 
 const emptyForm = {
@@ -66,7 +83,8 @@ export default function Clients() {
   const [error, setError]         = useState('')
   const [deleteId, setDeleteId]   = useState(null)
   const [expandedId, setExpandedId] = useState(null)
-  const [clientHistory, setClientHistory] = useState({}) // { [clientId]: { loading, orders } }
+  const [clientHistory, setClientHistory] = useState({})
+  const [copiedId, setCopiedId] = useState(null) // { [clientId]: { loading, orders } }
 
   // Pré-preenche busca se vier da aba Faturamento via ?q=
   useEffect(() => {
@@ -338,8 +356,8 @@ export default function Clients() {
                       </p>
                     )}
                     {(client.address || client.number) && (
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="flex items-start gap-2 text-gray-600 flex-1 min-w-0">
+                      <div className="space-y-2">
+                        <p className="flex items-start gap-2 text-gray-600">
                           <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0 mt-0.5" />
                           <span>
                             {client.address}
@@ -348,10 +366,36 @@ export default function Clients() {
                             {client.cep        ? ` · CEP ${client.cep}`    : ''}
                           </span>
                         </p>
-                        <a href={mapsNavUrl(client)} target="_blank" rel="noopener noreferrer"
-                          className="shrink-0 flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors whitespace-nowrap">
-                          <Navigation className="w-3.5 h-3.5" /> Navegue até
-                        </a>
+                        {/* Botões de ação de entrega */}
+                        <div className="flex flex-wrap gap-2 pl-5">
+                          {/* Copiar endereço */}
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(buildDeliveryAddress(client))
+                              setCopiedId(client.id)
+                              setTimeout(() => setCopiedId(null), 2000)
+                            }}
+                            className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors whitespace-nowrap ${
+                              copiedId === client.id
+                                ? 'bg-green-100 text-green-700 border border-green-200'
+                                : 'bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200'
+                            }`}>
+                            {copiedId === client.id
+                              ? <><Check className="w-3.5 h-3.5" /> Copiado!</>
+                              : <><Copy className="w-3.5 h-3.5" /> Copiar endereço</>
+                            }
+                          </button>
+                          {/* Abrir no Uber */}
+                          <a href={uberUrl(client)} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 bg-black hover:bg-gray-800 text-white text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors whitespace-nowrap">
+                            <Car className="w-3.5 h-3.5" /> Uber
+                          </a>
+                          {/* Navegue até (Maps) */}
+                          <a href={mapsNavUrl(client)} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors whitespace-nowrap">
+                            <Navigation className="w-3.5 h-3.5" /> Maps
+                          </a>
+                        </div>
                       </div>
                     )}
                     {!client.address && !client.number && client.maps_link && (
