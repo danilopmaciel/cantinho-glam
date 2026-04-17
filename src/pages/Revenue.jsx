@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
   TrendingUp, ShoppingBag, Tag, Users, Calendar,
@@ -250,9 +251,15 @@ export default function Revenue() {
                             {/* Cliente */}
                             <div className="flex items-center gap-1.5">
                               <User className="w-3 h-3 text-gray-400 shrink-0" />
-                              <span className="text-sm font-semibold text-gray-800 truncate">
-                                {order.customer_name || <span className="text-gray-400 font-normal italic">Sem cliente</span>}
-                              </span>
+                              {order.customer_name
+                                ? <Link
+                                    to={`/clientes?q=${encodeURIComponent(order.customer_phone || order.customer_name)}`}
+                                    className="text-sm font-semibold text-rose-600 hover:underline truncate"
+                                  >
+                                    {order.customer_name}
+                                  </Link>
+                                : <span className="text-gray-400 font-normal italic text-sm">Sem cliente</span>
+                              }
                               {order.customer_phone && (
                                 <span className="text-xs text-gray-400 shrink-0">· {order.customer_phone}</span>
                               )}

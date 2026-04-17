@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
   Users, Plus, Search, Pencil, Trash2, X, Save,
@@ -13,15 +14,21 @@ const whatsappUrl = (phone) => {
 }
 
 // URL de navegação Google Maps — usa o link salvo ou monta pelo endereço
+// O ViaCEP preenche address como "Logradouro, Bairro, Cidade, UF"
+// A URL precisa ser: "Logradouro, Número, Cidade, UF, CEP"
 const mapsNavUrl = (client) => {
   if (client.maps_link) return client.maps_link
-  const parts = [
-    client.address,
-    client.number,
-    client.complement,
-    client.cep,
-  ].filter(Boolean).join(', ')
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(parts)}`
+
+  const parts = (client.address || '').split(',').map(p => p.trim()).filter(Boolean)
+  // parts[0] = logradouro, parts[1] = bairro, parts[2] = cidade, parts[3] = UF
+  const street = parts[0] || ''
+  const city   = parts.length >= 4 ? parts[2] : (parts.length >= 2 ? parts[parts.length - 1] : '')
+  const state  = parts.length >= 4 ? parts[3] : ''
+
+  const query = [street, client.number, city, state, client.cep]
+    .filter(Boolean).join(', ')
+
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`
 }
 
 const emptyForm = {
@@ -42,6 +49,7 @@ const fmtCep = (v) => {
 }
 
 export default function Clients() {
+  const [searchParams] = useSearchParams()
   const [clients, setClients]     = useState([])
   const [filtered, setFiltered]   = useState([])
   const [search, setSearch]       = useState('')
@@ -54,6 +62,12 @@ export default function Clients() {
   const [error, setError]         = useState('')
   const [deleteId, setDeleteId]   = useState(null)
   const [expandedId, setExpandedId] = useState(null)
+
+  // Pré-preenche busca se vier da aba Faturamento via ?q=
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q) setSearch(q)
+  }, [])
 
   useEffect(() => { fetchClients() }, [])
 
