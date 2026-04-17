@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import {
@@ -279,7 +279,14 @@ export default function NewSale() {
           <h2 className="font-bold text-gray-900 text-xl">Venda registrada!</h2>
           <p className="text-gray-500 text-sm">
             {cartItems.length} {cartItems.length === 1 ? 'produto' : 'produtos'}
-            {customerName ? <> para <strong>{customerName}</strong></> : ''}
+            {customerName
+              ? <> para <Link
+                  to={`/clientes?q=${encodeURIComponent(customerPhone || customerName)}`}
+                  className="font-bold text-rose-600 hover:underline">
+                  {customerName}
+                </Link></>
+              : ''
+            }
           </p>
           <div className="bg-green-50 rounded-2xl px-4 py-3">
             <p className="text-2xl font-bold text-green-700">{fmt(grandTotal)}</p>
