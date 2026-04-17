@@ -244,12 +244,12 @@ export default function NewSale() {
       const { error: saleErr } = await supabase.from('sales').insert(salesRows)
       if (saleErr) throw saleErr
 
-      // Baixar estoque
+      // Baixar estoque (atômico — evita corrida entre vendas simultâneas)
       for (const i of cartItems) {
-        await supabase
-          .from('products')
-          .update({ quantity: (i.product.quantity ?? 0) - i.quantity })
-          .eq('id', i.product.id)
+        await supabase.rpc('decrement_stock', {
+          p_product_id: i.product.id,
+          p_amount:     i.quantity,
+        })
       }
 
       setSuccess(true)

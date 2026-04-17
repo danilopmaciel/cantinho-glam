@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Plus, Search, Package, X } from 'lucide-react'
+import { Plus, Search, Package, X, AlertTriangle } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import ProductCard from '../components/ProductCard'
+
+const LOW_STOCK_THRESHOLD = 3
 
 export default function Dashboard() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [stockFilter, setStockFilter] = useState(null) // null | 'low' | 'out'
   const [deleteId, setDeleteId] = useState(null)
   const navigate = useNavigate()
 
@@ -48,11 +51,21 @@ export default function Dashboard() {
     setDeleteId(null)
   }
 
-  const filtered = products.filter(p =>
-    (p.brand?.toLowerCase() || '').includes(search.toLowerCase()) ||
-    (p.type?.toLowerCase() || '').includes(search.toLowerCase()) ||
-    (p.color?.toLowerCase() || '').includes(search.toLowerCase())
-  )
+  const outOfStock  = products.filter(p => (p.quantity ?? 0) === 0)
+  const lowStock    = products.filter(p => (p.quantity ?? 0) > 0 && (p.quantity ?? 0) <= LOW_STOCK_THRESHOLD)
+
+  const filtered = products.filter(p => {
+    const q   = search.toLowerCase()
+    const matchSearch =
+      (p.name?.toLowerCase()  || '').includes(q) ||
+      (p.brand?.toLowerCase() || '').includes(q) ||
+      (p.type?.toLowerCase()  || '').includes(q) ||
+      (p.color?.toLowerCase() || '').includes(q)
+    if (!matchSearch) return false
+    if (stockFilter === 'out')  return (p.quantity ?? 0) === 0
+    if (stockFilter === 'low')  return (p.quantity ?? 0) > 0 && (p.quantity ?? 0) <= LOW_STOCK_THRESHOLD
+    return true
+  })
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
@@ -80,12 +93,49 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* Alertas de estoque */}
+        {!loading && (outOfStock.length > 0 || lowStock.length > 0) && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {outOfStock.length > 0 && (
+              <button
+                onClick={() => setStockFilter(stockFilter === 'out' ? null : 'out')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
+                  stockFilter === 'out'
+                    ? 'bg-red-500 text-white border-red-500'
+                    : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                }`}>
+                <AlertTriangle className="w-3.5 h-3.5" />
+                {outOfStock.length} sem estoque
+              </button>
+            )}
+            {lowStock.length > 0 && (
+              <button
+                onClick={() => setStockFilter(stockFilter === 'low' ? null : 'low')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
+                  stockFilter === 'low'
+                    ? 'bg-yellow-500 text-white border-yellow-500'
+                    : 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100'
+                }`}>
+                <AlertTriangle className="w-3.5 h-3.5" />
+                {lowStock.length} com estoque baixo
+              </button>
+            )}
+            {stockFilter && (
+              <button
+                onClick={() => setStockFilter(null)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:bg-gray-50 transition-colors">
+                <X className="w-3 h-3" /> Limpar filtro
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Resumo */}
         <div className="flex items-center gap-2 mb-5 text-sm text-gray-500">
           <Package className="w-4 h-4 text-rose-400" />
           <span>
-            {search
-              ? `${filtered.length} resultado${filtered.length !== 1 ? 's' : ''} para "${search}"`
+            {search || stockFilter
+              ? `${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`
               : `${products.length} produto${products.length !== 1 ? 's' : ''} cadastrado${products.length !== 1 ? 's' : ''}`}
           </span>
         </div>

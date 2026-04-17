@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
   TrendingUp, ShoppingBag, Tag, Users, Calendar,
-  ChevronDown, ChevronUp, User, Phone
+  ChevronDown, ChevronUp, User, XCircle, AlertTriangle
 } from 'lucide-react'
 
 const fmt = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0)
@@ -21,6 +21,8 @@ export default function Revenue() {
   const [loading, setLoading]   = useState(true)
   const [filter, setFilter]     = useState(2)
   const [expandedOrders, setExpandedOrders] = useState({})
+  const [cancelKey, setCancelKey]   = useState(null)   // order key aguardando confirmação
+  const [cancelling, setCancelling] = useState(false)
 
   useEffect(() => { fetchSales() }, [filter])
 
@@ -45,6 +47,8 @@ export default function Revenue() {
       from.setHours(0, 0, 0, 0)
       query = query.gte('created_at', from.toISOString())
     }
+
+    query = query.eq('cancelled', false)
 
     const { data, error } = await query
     if (error) console.error('Revenue query error:', error)
@@ -119,6 +123,38 @@ export default function Revenue() {
 
   const toggleOrder = (key) =>
     setExpandedOrders(prev => ({ ...prev, [key]: !prev[key] }))
+
+  // ── Cancelar pedido ───────────────────────────────────────
+
+  const handleCancelOrder = async () => {
+    const order = orders.find(o => o.key === cancelKey)
+    if (!order) return
+    setCancelling(true)
+    try {
+      // Marcar todas as linhas do pedido como canceladas
+      if (order.order_id) {
+        await supabase.from('sales').update({ cancelled: true }).eq('order_id', order.order_id)
+      } else {
+        // venda sem order_id (individual)
+        await supabase.from('sales').update({ cancelled: true }).eq('id', order.items[0].id)
+      }
+      // Restaurar estoque atomicamente
+      for (const item of order.items) {
+        if (item.products?.id) {
+          await supabase.rpc('increment_stock', {
+            p_product_id: item.products.id,
+            p_amount:     item.quantity_sold,
+          })
+        }
+      }
+      setCancelKey(null)
+      fetchSales()
+    } catch (err) {
+      console.error('Erro ao cancelar pedido:', err)
+    } finally {
+      setCancelling(false)
+    }
+  }
 
   const productName = (sale) => {
     if (!sale.products) return 'Produto removido'
@@ -273,7 +309,7 @@ export default function Revenue() {
                             </p>
                           </div>
 
-                          {/* Total + expand */}
+                          {/* Total + expand + cancelar */}
                           <div className="shrink-0 flex items-center gap-2">
                             <div className="text-right">
                               <p className="font-bold text-rose-600">{fmt(order.total)}</p>
@@ -285,6 +321,12 @@ export default function Revenue() {
                               ? <ChevronUp className="w-4 h-4 text-gray-400" />
                               : <ChevronDown className="w-4 h-4 text-gray-400" />
                             }
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setCancelKey(order.key) }}
+                              title="Cancelar pedido"
+                              className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                              <XCircle className="w-4 h-4" />
+                            </button>
                           </div>
                         </button>
 
@@ -326,6 +368,39 @@ export default function Revenue() {
           </>
         )}
       </div>
+
+      {/* Modal confirmação de cancelamento */}
+      {cancelKey && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+              </div>
+              <h3 className="font-bold text-gray-900 text-lg">Cancelar pedido?</h3>
+            </div>
+            <p className="text-gray-500 text-sm mb-6">
+              O estoque dos produtos será restaurado automaticamente. Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCancelKey(null)}
+                disabled={cancelling}
+                className="flex-1 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50">
+                Voltar
+              </button>
+              <button
+                onClick={handleCancelOrder}
+                disabled={cancelling}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+                {cancelling
+                  ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : 'Cancelar pedido'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

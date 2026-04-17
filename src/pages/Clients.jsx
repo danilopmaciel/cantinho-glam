@@ -1,10 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
   Users, Plus, Search, Pencil, Trash2, X, Save,
-  Phone, MapPin, FileText, User, ExternalLink, ChevronDown, Navigation
+  Phone, MapPin, FileText, User, ExternalLink, ChevronDown, Navigation,
+  ShoppingBag, Tag
 } from 'lucide-react'
+
+const fmt = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0)
+const fmtDate = (d) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
 
 // Abre WhatsApp com o número do cliente
 const whatsappUrl = (phone) => {
@@ -62,6 +66,7 @@ export default function Clients() {
   const [error, setError]         = useState('')
   const [deleteId, setDeleteId]   = useState(null)
   const [expandedId, setExpandedId] = useState(null)
+  const [clientHistory, setClientHistory] = useState({}) // { [clientId]: { loading, orders } }
 
   // Pré-preenche busca se vier da aba Faturamento via ?q=
   useEffect(() => {
@@ -91,6 +96,37 @@ export default function Clients() {
     setClients(data || [])
     setFiltered(data || [])
     setLoading(false)
+  }
+
+  // ── Histórico de compras do cliente ──────────────────────
+  const loadHistory = useCallback(async (clientId) => {
+    setClientHistory(prev => ({ ...prev, [clientId]: { loading: true, orders: [] } }))
+    const { data } = await supabase
+      .from('sales')
+      .select('id, order_id, created_at, quantity_sold, unit_price, total_price, discount_amount, products(id, name, brand, color)')
+      .eq('customer_id', clientId)
+      .eq('cancelled', false)
+      .order('created_at', { ascending: false })
+      .limit(30)
+
+    // Agrupar por order_id
+    const grouped = Object.values(
+      (data || []).reduce((acc, s) => {
+        const key = s.order_id || `s-${s.id}`
+        if (!acc[key]) acc[key] = { key, created_at: s.created_at, items: [], total: 0 }
+        acc[key].items.push(s)
+        acc[key].total += s.total_price || 0
+        return acc
+      }, {})
+    ).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+
+    setClientHistory(prev => ({ ...prev, [clientId]: { loading: false, orders: grouped } }))
+  }, [])
+
+  const toggleExpand = (clientId) => {
+    const isOpening = expandedId !== clientId
+    setExpandedId(isOpening ? clientId : null)
+    if (isOpening && !clientHistory[clientId]) loadHistory(clientId)
   }
 
   const openNew = () => {
@@ -277,12 +313,10 @@ export default function Clients() {
                   </div>
                   {/* Ações */}
                   <div className="flex items-center gap-1 shrink-0">
-                    {(client.cpf_cnpj || client.address || client.number || client.complement || client.maps_link || client.notes) && (
-                      <button onClick={() => setExpandedId(expandedId === client.id ? null : client.id)}
-                        className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                        <ChevronDown className={`w-4 h-4 transition-transform ${expandedId === client.id ? 'rotate-180' : ''}`} />
-                      </button>
-                    )}
+                    <button onClick={() => toggleExpand(client.id)}
+                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                      <ChevronDown className={`w-4 h-4 transition-transform ${expandedId === client.id ? 'rotate-180' : ''}`} />
+                    </button>
                     <button onClick={() => openEdit(client)}
                       className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors">
                       <Pencil className="w-4 h-4" />
@@ -331,6 +365,42 @@ export default function Clients() {
                         <span className="shrink-0">📝</span> {client.notes}
                       </p>
                     )}
+
+                    {/* ── Histórico de compras ── */}
+                    <div className="pt-2 border-t border-gray-200 mt-1">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                        <ShoppingBag className="w-3.5 h-3.5" /> Histórico de compras
+                      </p>
+                      {clientHistory[client.id]?.loading ? (
+                        <div className="flex items-center gap-2 text-xs text-gray-400 py-1">
+                          <div className="w-3 h-3 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
+                          Carregando...
+                        </div>
+                      ) : clientHistory[client.id]?.orders.length === 0 ? (
+                        <p className="text-xs text-gray-400 italic py-1">Nenhuma compra registrada.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {clientHistory[client.id].orders.map(order => (
+                            <div key={order.key} className="bg-white border border-gray-100 rounded-xl px-3 py-2 space-y-1">
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs text-gray-400">{fmtDate(order.created_at)}</span>
+                                <span className="text-sm font-bold text-rose-600">{fmt(order.total)}</span>
+                              </div>
+                              <div className="space-y-0.5">
+                                {order.items.map(item => (
+                                  <p key={item.id} className="text-xs text-gray-500 flex items-center gap-1.5">
+                                    <Tag className="w-3 h-3 text-gray-300 shrink-0" />
+                                    {item.products?.name || item.products?.brand || 'Produto removido'}
+                                    {item.products?.color ? ` · ${item.products.color}` : ''}
+                                    <span className="text-gray-400">× {item.quantity_sold}</span>
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

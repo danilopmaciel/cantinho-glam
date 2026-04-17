@@ -27,8 +27,6 @@ export function AuthProvider({ children }) {
     loading,
     signIn: (email, password) =>
       supabase.auth.signInWithPassword({ email, password }),
-    signUp: (email, password) =>
-      supabase.auth.signUp({ email, password }),
     signOut: () => supabase.auth.signOut(),
   }
 
