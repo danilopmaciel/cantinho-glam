@@ -231,10 +231,13 @@ Se a imagem não mostrar um produto de beleza identificável, responda: {"error"
 
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-goog-api-key': apiKey,
+          },
           body: JSON.stringify({
             contents: [{
               parts: [
@@ -249,18 +252,28 @@ Se a imagem não mostrar um produto de beleza identificável, responda: {"error"
 
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}))
-        throw new Error(errBody?.error?.message || `HTTP ${res.status}`)
+        const apiMsg  = errBody?.error?.message || ''
+        const status  = res.status
+        if (status === 400 && apiMsg.includes('API_KEY')) {
+          throw new Error('Chave de API inválida. Verifique a chave Gemini no arquivo .env.')
+        }
+        if (status === 401 || status === 403) {
+          throw new Error(`Acesso negado (${status}). A chave Gemini está incorreta ou sem permissão.`)
+        }
+        throw new Error(apiMsg || `Erro HTTP ${status}`)
       }
 
       const json    = await res.json()
       const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || ''
+
+      if (!rawText) throw new Error('Resposta vazia da API.')
 
       // Remove blocos de markdown caso o modelo os inclua
       const cleaned = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
       const parsed  = JSON.parse(cleaned)
 
       if (parsed.error) {
-        setAiMessage('Não foi possível identificar o produto na imagem.')
+        setAiMessage('Produto não identificado na imagem. Tente com uma foto mais clara.')
         setAiStatus('error')
         return
       }
@@ -280,7 +293,7 @@ Se a imagem não mostrar um produto de beleza identificável, responda: {"error"
       setAiStatus('ok')
     } catch (err) {
       console.error('Gemini error:', err)
-      setAiMessage('Não foi possível identificar o produto. Verifique a imagem e tente novamente.')
+      setAiMessage(err.message || 'Erro inesperado. Tente novamente.')
       setAiStatus('error')
     } finally {
       setAiLoading(false)
