@@ -131,12 +131,12 @@ export default function Revenue() {
     if (!order) return
     setCancelling(true)
     try {
-      // Marcar todas as linhas do pedido como canceladas
+      // Marcar todas as linhas do pedido como canceladas via RPC
+      // (SECURITY DEFINER permite cancelar pedidos de qualquer vendedor)
       if (order.order_id) {
-        await supabase.from('sales').update({ cancelled: true }).eq('order_id', order.order_id)
+        await supabase.rpc('cancel_order', { p_order_id: order.order_id })
       } else {
-        // venda sem order_id (individual)
-        await supabase.from('sales').update({ cancelled: true }).eq('id', order.items[0].id)
+        await supabase.rpc('cancel_sale', { p_sale_id: order.items[0].id })
       }
       // Restaurar estoque atomicamente
       for (const item of order.items) {

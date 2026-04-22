@@ -218,54 +218,14 @@ export default function ProductForm() {
         base64Data = btoa(String.fromCharCode(...new Uint8Array(buf)))
       }
 
-      const prompt = `Analise a imagem e identifique o produto de beleza/cosméticos. Responda APENAS com JSON puro, sem markdown, sem explicações:
-{"name":"nome do produto","brand":"marca","type":"tipo (esmalte, batom, base, etc)","color":"cor ou null","size":"tamanho/volume ou null","quantity":1}
-Se não identificar: {"error":true}`
+      // Chama a Edge Function — chave Gemini fica no servidor, nunca exposta ao browser
+      const { data: fnData, error: fnError } = await supabase.functions.invoke('recognize-product', {
+        body: { imageBase64: base64Data, mimeType },
+      })
 
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-goog-api-key': apiKey,
-          },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: prompt },
-                { inline_data: { mime_type: mimeType, data: base64Data } },
-              ],
-            }],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
-          }),
-        }
-      )
+      if (fnError) throw new Error(fnError.message || 'Erro ao chamar o servidor.')
 
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}))
-        const apiMsg  = errBody?.error?.message || ''
-        const status  = res.status
-        if (status === 400 && apiMsg.includes('API_KEY')) {
-          throw new Error('Chave de API inválida. Verifique a chave Gemini no arquivo .env.')
-        }
-        if (status === 401 || status === 403) {
-          throw new Error(`Acesso negado (${status}). A chave Gemini está incorreta ou sem permissão.`)
-        }
-        throw new Error(apiMsg || `Erro HTTP ${status}`)
-      }
-
-      const json    = await res.json()
-      const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || ''
-
-      if (!rawText) throw new Error('Resposta vazia da API.')
-
-      // Remove blocos de markdown e extrai o objeto JSON da resposta
-      const stripped = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
-      const jsonMatch = stripped.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) throw new Error('Resposta da IA não continha JSON válido.')
-      const parsed = JSON.parse(jsonMatch[0])
+      const parsed = typeof fnData === 'string' ? JSON.parse(fnData) : fnData
 
       if (parsed.error) {
         setAiMessage('Produto não identificado na imagem. Tente com uma foto mais clara.')
