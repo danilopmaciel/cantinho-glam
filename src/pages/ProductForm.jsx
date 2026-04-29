@@ -228,7 +228,9 @@ export default function ProductForm() {
       const parsed = typeof fnData === 'string' ? JSON.parse(fnData) : fnData
 
       if (parsed.error) {
-        setAiMessage('Produto não identificado na imagem. Tente com uma foto mais clara.')
+        const detail = parsed.message ? ` (${parsed.message})` : ''
+        console.error('AI recognition error:', parsed.message || 'unknown')
+        setAiMessage(`Produto não identificado na imagem. Tente com uma foto mais clara.${detail}`)
         setAiStatus('error')
         return
       }

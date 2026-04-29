@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
 Se não identificar: {"error":true}`
 
     const geminiRes = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
       {
         method: 'POST',
         headers: {
@@ -58,9 +58,12 @@ Se não identificar: {"error":true}`
     const geminiJson = await geminiRes.json()
 
     if (!geminiRes.ok) {
+      const msg = geminiJson.error?.message || `Gemini HTTP ${geminiRes.status}`
+      console.error('Gemini API error:', msg)
+      // Retorna 200 com error flag para não disparar FunctionsHttpError no cliente
       return new Response(
-        JSON.stringify({ error: geminiJson.error?.message || `Gemini HTTP ${geminiRes.status}` }),
-        { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: true, message: msg }),
+        { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } }
       )
     }
 
