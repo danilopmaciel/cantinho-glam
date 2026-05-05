@@ -26,7 +26,7 @@ function AppRoutes() {
         <Route path="/faturamento" element={<ProtectedRoute><Revenue /></ProtectedRoute>} />
         <Route path="/trocar-senha" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
         <Route path="/clientes"    element={<ProtectedRoute><Clients /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="*" element={<Navigate to={user ? '/' : '/loja'} />} />
       </Routes>
       {user && <BottomNav />}
     </>
