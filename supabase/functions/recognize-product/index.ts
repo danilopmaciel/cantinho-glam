@@ -31,9 +31,24 @@ Deno.serve(async (req) => {
       )
     }
 
-    const prompt = `Analise a imagem e identifique o produto de beleza/cosméticos. Responda APENAS com JSON puro, sem markdown, sem explicações:
-{"name":"nome do produto","brand":"marca","type":"tipo (esmalte, batom, base, etc)","color":"cor ou null","size":"tamanho/volume ou null","quantity":1}
-Se não identificar: {"error":true}`
+    const prompt = `Analise a imagem e identifique QUALQUER produto visível (cosméticos, perfumes, esmaltes, acessórios de beleza, etc.).
+Extraia o que conseguir, mesmo que parcial — preencha os campos que tiver certeza, deixe os outros como null.
+Só use {"error":true} se a imagem realmente não tem nenhum produto identificável (ex.: paisagem, pessoa sem produto, foto totalmente ilegível).
+NÃO inclua campos extras, NÃO escreva justificativas, NÃO adicione "message" ou comentários.
+Formato esperado quando identifica: {"name":"...","brand":"...","type":"...","color":null|"...","size":null|"...","quantity":1}`
+
+    const responseSchema = {
+      type: 'OBJECT',
+      properties: {
+        name:     { type: 'STRING',  nullable: true },
+        brand:    { type: 'STRING',  nullable: true },
+        type:     { type: 'STRING',  nullable: true },
+        color:    { type: 'STRING',  nullable: true },
+        size:     { type: 'STRING',  nullable: true },
+        quantity: { type: 'NUMBER',  nullable: true },
+        error:    { type: 'BOOLEAN', nullable: true },
+      },
+    }
 
     const geminiRes = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
@@ -50,7 +65,12 @@ Se não identificar: {"error":true}`
               { inline_data: { mime_type: mimeType, data: imageBase64 } },
             ],
           }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 1024,
+            responseMimeType: 'application/json',
+            responseSchema,
+          },
         }),
       }
     )
@@ -58,11 +78,31 @@ Se não identificar: {"error":true}`
     const geminiJson = await geminiRes.json()
 
     if (!geminiRes.ok) {
-      const msg = geminiJson.error?.message || `Gemini HTTP ${geminiRes.status}`
-      console.error('Gemini API error:', msg)
+      const status      = geminiRes.status
+      const apiMsg      = geminiJson?.error?.message || `Gemini HTTP ${status}`
+      const apiStatus   = geminiJson?.error?.status  || ''   // ex: RESOURCE_EXHAUSTED, PERMISSION_DENIED
+      const isQuota     = status === 429 || apiStatus === 'RESOURCE_EXHAUSTED'
+      const isAuth      = status === 401 || status === 403
+      const errorCode   = isQuota ? 'quota_exceeded' : isAuth ? 'auth_error' : 'gemini_error'
+
+      // Log estruturado completo para debug futuro
+      console.error('Gemini API error:', JSON.stringify({
+        httpStatus: status,
+        apiStatus,
+        apiMsg,
+        errorCode,
+        details: geminiJson?.error?.details,
+      }))
+
+      const userMsg = isQuota
+        ? 'Cota da IA atingida no momento. Tente novamente em alguns minutos.'
+        : isAuth
+          ? 'Erro de autenticação com o serviço de IA. Avise o administrador.'
+          : 'Erro temporário ao processar a imagem. Tente novamente.'
+
       // Retorna 200 com error flag para não disparar FunctionsHttpError no cliente
       return new Response(
-        JSON.stringify({ error: true, message: msg }),
+        JSON.stringify({ error: true, code: errorCode, message: userMsg, debug: apiMsg }),
         { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } }
       )
     }

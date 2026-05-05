@@ -228,9 +228,26 @@ export default function ProductForm() {
       const parsed = typeof fnData === 'string' ? JSON.parse(fnData) : fnData
 
       if (parsed.error) {
-        const detail = parsed.message ? ` (${parsed.message})` : ''
-        console.error('AI recognition error:', parsed.message || 'unknown')
-        setAiMessage(`Produto não identificado na imagem. Tente com uma foto mais clara.${detail}`)
+        // Log completo para facilitar debug futuro — incluindo qualquer campo extra
+        // que o servidor ou o LLM venham a retornar (code, message, debug, etc.).
+        console.error('AI recognition error:', parsed)
+
+        // Mensagem amigável baseada no código retornado pela Edge Function.
+        // Não exibimos parsed.message bruto na UI: quando vem do LLM é alucinação,
+        // e quando vem do servidor já está em userMsg via parsed.message.
+        let userMsg
+        if (parsed.code === 'quota_exceeded') {
+          userMsg = parsed.message || 'Cota da IA atingida. Tente novamente em alguns minutos.'
+        } else if (parsed.code === 'auth_error') {
+          userMsg = parsed.message || 'Erro de autenticação com o serviço de IA.'
+        } else if (parsed.code === 'gemini_error') {
+          userMsg = parsed.message || 'Erro temporário ao processar a imagem. Tente novamente.'
+        } else {
+          // Sem code → veio do próprio modelo dizendo {"error": true}
+          userMsg = 'Não consegui identificar o produto. Centralize o produto na foto, com a embalagem visível e bem iluminada.'
+        }
+
+        setAiMessage(userMsg)
         setAiStatus('error')
         return
       }

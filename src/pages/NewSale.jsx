@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import {
   ShoppingCart, Plus, Minus, Trash2, Tag, ArrowLeft,
-  CheckCircle, User, Phone, Percent, Package, ChevronDown, Search, X
+  CheckCircle, User, Phone, Percent, Package, Search, X
 } from 'lucide-react'
 
 const fmt = (v) =>
@@ -21,9 +21,12 @@ export default function NewSale() {
   const [success, setSuccess]       = useState(false)
 
   // Produto a adicionar
-  const [selectedId, setSelectedId]     = useState('')
-  const [addQty, setAddQty]             = useState(1)
-  const [addDiscount, setAddDiscount]   = useState('')
+  const [selectedId, setSelectedId]       = useState('')
+  const [productSearch, setProductSearch] = useState('')
+  const [showProductDrop, setShowProductDrop] = useState(false)
+  const [addQty, setAddQty]               = useState(1)
+  const [addDiscount, setAddDiscount]     = useState('')
+  const productRef = useRef(null)
 
   // Cliente
   const [customerName, setCustomerName]   = useState('')
@@ -42,6 +45,8 @@ export default function NewSale() {
     const handler = (e) => {
       if (customerRef.current && !customerRef.current.contains(e.target))
         setShowSuggestions(false)
+      if (productRef.current && !productRef.current.contains(e.target))
+        setShowProductDrop(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -102,6 +107,33 @@ export default function NewSale() {
     setShowSuggestions(false)
   }
 
+  // ── Busca de produto ──────────────────────────────────────
+
+  const productSuggestions = productSearch.trim().length === 0
+    ? []
+    : products.filter(p => {
+        const q = productSearch.toLowerCase()
+        return (
+          (p.name  || '').toLowerCase().includes(q) ||
+          (p.brand || '').toLowerCase().includes(q) ||
+          (p.type  || '').toLowerCase().includes(q) ||
+          (p.color || '').toLowerCase().includes(q)
+        )
+      }).slice(0, 8)
+
+  const selectProduct = (p) => {
+    setSelectedId(p.id)
+    setProductSearch(p.name || p.brand || '')
+    setShowProductDrop(false)
+    setError('')
+  }
+
+  const clearProduct = () => {
+    setSelectedId('')
+    setProductSearch('')
+    setShowProductDrop(false)
+  }
+
   // ── Produto selecionado ───────────────────────────────────
 
   const selectedProduct = products.find(p => p.id === selectedId) || null
@@ -133,7 +165,7 @@ export default function NewSale() {
         discount: parseFloat(addDiscount) || 0,
       }])
     }
-    setSelectedId(''); setAddQty(1); setAddDiscount('')
+    setSelectedId(''); setProductSearch(''); setAddQty(1); setAddDiscount('')
   }
 
   const removeFromCart = (pid) => setCart(cart.filter(i => i.product.id !== pid))
@@ -421,24 +453,68 @@ export default function NewSale() {
             <Package className="w-4 h-4 text-rose-400" /> Adicionar produto
           </h2>
 
-          <div className="relative">
-            <select value={selectedId}
-              onChange={e => { setSelectedId(e.target.value); setError('') }}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-rose-400 appearance-none pr-8">
-              <option value="">Selecione um produto...</option>
-              {products.map(p => {
-                const inCart    = cart.find(i => i.product.id === p.id)
-                const available = (p.quantity ?? 0) - (inCart?.quantity ?? 0)
-                return (
-                  <option key={p.id} value={p.id} disabled={available <= 0}>
-                    {p.name || p.brand}
-                    {p.color ? ` · ${p.color}` : ''}
-                    {available <= 0 ? ' — SEM ESTOQUE' : ` — ${available} un. · ${fmt(p.sale_price)}`}
-                  </option>
-                )
-              })}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <div ref={productRef} className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={productSearch}
+              onChange={e => {
+                setProductSearch(e.target.value)
+                setSelectedId('')
+                setShowProductDrop(true)
+                setError('')
+              }}
+              onFocus={() => { if (productSearch.length > 0) setShowProductDrop(true) }}
+              placeholder="Buscar produto por nome, marca, cor..."
+              className="w-full border border-gray-200 rounded-xl pl-8 pr-8 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white"
+            />
+            {productSearch && (
+              <button onClick={clearProduct}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Dropdown de sugestões */}
+            {showProductDrop && productSearch.trim().length > 0 && (
+              <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-2xl shadow-xl z-30 overflow-hidden mt-1">
+                {productSuggestions.length === 0 ? (
+                  <div className="px-4 py-3 text-sm text-gray-400">Nenhum produto encontrado.</div>
+                ) : (
+                  <>
+                    <p className="px-3 pt-2 pb-1 text-xs text-gray-400 font-semibold">Produtos encontrados</p>
+                    {productSuggestions.map(p => {
+                      const inCart    = cart.find(i => i.product.id === p.id)
+                      const available = (p.quantity ?? 0) - (inCart?.quantity ?? 0)
+                      const semEstoque = available <= 0
+                      return (
+                        <button key={p.id}
+                          onMouseDown={() => !semEstoque && selectProduct(p)}
+                          disabled={semEstoque}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 transition-colors text-left border-t border-gray-50
+                            ${semEstoque ? 'opacity-40 cursor-not-allowed' : 'hover:bg-rose-50'}`}>
+                          {p.image_url
+                            ? <img src={p.image_url} className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                            : <div className="w-9 h-9 bg-rose-50 rounded-lg flex items-center justify-center shrink-0">
+                                <Tag className="w-3.5 h-3.5 text-rose-300" />
+                              </div>
+                          }
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-800 truncate">
+                              {p.name || p.brand}
+                              {p.color ? ` · ${p.color}` : ''}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {semEstoque ? 'Sem estoque' : `${available} un. · ${fmt(p.sale_price)}`}
+                            </p>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {selectedProduct && (
