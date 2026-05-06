@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Plus, Search, Package, X, AlertTriangle } from 'lucide-react'
+import { Plus, Search, Package, X, AlertTriangle, GitMerge } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import ProductCard from '../components/ProductCard'
 
@@ -11,13 +11,28 @@ export default function Dashboard() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [stockFilter, setStockFilter] = useState(null) // null | 'low' | 'out'
+  const [stockFilter, setStockFilter] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
+  const [conflicts, setConflicts] = useState([])
+  const [merging, setMerging] = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => {
     fetchProducts()
+    fetchConflicts()
   }, [])
+
+  const fetchConflicts = async () => {
+    const { data } = await supabase.rpc('get_phone_conflicts')
+    setConflicts(data || [])
+  }
+
+  const handleMerge = async (profileId, customerId) => {
+    setMerging(profileId)
+    await supabase.rpc('merge_profile_customer', { p_profile_id: profileId, p_customer_id: customerId })
+    setConflicts(prev => prev.filter(c => c.profile_id !== profileId))
+    setMerging(null)
+  }
 
   const fetchProducts = async () => {
     setLoading(true)
@@ -169,6 +184,38 @@ export default function Dashboard() {
                 onEdit={() => navigate(`/produtos/${product.id}/editar`)}
                 onDelete={() => handleDelete(product.id)}
               />
+            ))}
+          </div>
+        )}
+        {/* Cadastros duplicados */}
+        {conflicts.length > 0 && (
+          <div className="mt-8 bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+            <h3 className="font-bold text-amber-800 text-sm flex items-center gap-2">
+              <GitMerge className="w-4 h-4" />
+              Cadastros duplicados ({conflicts.length})
+              <span className="font-normal text-amber-600 text-xs">· mesmo telefone na loja e no cadastro</span>
+            </h3>
+            {conflicts.map(c => (
+              <div key={c.profile_id} className="bg-white rounded-xl border border-amber-100 p-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 truncate">
+                    {c.profile_name || '(sem nome)'} · {c.profile_phone}
+                  </p>
+                  <p className="text-xs text-gray-400 truncate">
+                    Loja: {c.profile_email} · Cliente: {c.customer_name}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleMerge(c.profile_id, c.customer_id)}
+                  disabled={merging === c.profile_id}
+                  className="shrink-0 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
+                  {merging === c.profile_id
+                    ? <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                    : <GitMerge className="w-3.5 h-3.5" />
+                  }
+                  Mesclar
+                </button>
+              </div>
             ))}
           </div>
         )}
