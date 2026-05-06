@@ -5,13 +5,20 @@ import { supabase } from '../lib/supabase'
 
 export default function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
-  const [isAdmin, setIsAdmin]   = useState(null)
+  const [isAdmin, setIsAdmin] = useState(null)
 
   useEffect(() => {
     if (!user) { setIsAdmin(false); return }
-    // Usuários com perfil na tabela profiles são clientes, não admins
-    supabase.from('profiles').select('id').eq('id', user.id).maybeSingle()
-      .then(({ data }) => setIsAdmin(!data))
+    supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        // Admins têm role='employee' ou não têm profile (usuário novo)
+        const role = data?.role
+        setIsAdmin(!data || role === 'employee' || role === 'admin')
+      })
   }, [user])
 
   if (loading || (user && isAdmin === null)) {

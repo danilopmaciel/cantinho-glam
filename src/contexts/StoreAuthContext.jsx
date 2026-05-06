@@ -51,7 +51,7 @@ export function StoreAuthProvider({ children }) {
       options: { data: { full_name: name } },
     })
     if (!error && data.user) {
-      await supabase.from('profiles').insert({ id: data.user.id, name, email })
+      await supabase.from('profiles').insert({ id: data.user.id, name, email, role: 'customer' })
     }
     return { data, error }
   }
