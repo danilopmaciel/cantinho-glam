@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ShoppingCart, X, Package, MessageCircle } from 'lucide-react'
 
@@ -204,6 +205,12 @@ export default function Store() {
             </section>
           ))
         )}
+        {/* Rodapé admin */}
+        <div className="text-center py-8">
+          <Link to="/login" className="text-xs text-gray-300 hover:text-gray-400 transition-colors">
+            Área administrativa
+          </Link>
+        </div>
       </main>
 
       {/* Botão flutuante do carrinho */}
