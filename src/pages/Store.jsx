@@ -290,7 +290,7 @@ export default function Store() {
         ) : (
           Object.entries(grouped).map(([type, items]) => (
             <section key={type} className="mb-8">
-              {(!search && !activeCategory || Object.keys(grouped).length > 1) && (
+              {(!search && !activeSub || Object.keys(grouped).length > 1) && (
                 <h2 className="font-bold text-gray-500 text-xs uppercase tracking-widest mb-3 flex items-center gap-2">
                   <span className="w-5 h-0.5 bg-rose-400 rounded-full inline-block" />
                   {type}
