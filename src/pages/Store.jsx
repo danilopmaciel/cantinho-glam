@@ -22,9 +22,15 @@ export default function Store() {
   const [cart, setCart]                   = useState([])
   const [showCart, setShowCart]           = useState(false)
   const [loading, setLoading]             = useState(true)
-  const [search, setSearch]               = useState('')
-  const [activeCategory, setActiveCategory] = useState(null)
-  const [showUserMenu, setShowUserMenu]   = useState(false)
+  const [search, setSearch]                 = useState('')
+  const [activeMain, setActiveMain]         = useState(null)   // null | 'Nail' | 'Lash'
+  const [activeSub, setActiveSub]           = useState(null)
+  const [showUserMenu, setShowUserMenu]     = useState(false)
+
+  const SUBCATEGORIES = {
+    Nail: ['Esmalte gel', 'Gel', 'Nail Art', 'Preparadores', 'Limpeza', 'Decorações', 'Ferramentas'],
+    Lash: ['Cílios', 'Cola adesivadora', 'Preparadores', 'Limpeza', 'Ferramentas'],
+  }
   const userMenuRef = useRef(null)
 
   useEffect(() => {
@@ -50,30 +56,28 @@ export default function Store() {
   const fetchProducts = async () => {
     const { data } = await supabase
       .from('products')
-      .select('id, name, brand, type, color, size, image_url, sale_price, quantity')
+      .select('id, name, brand, category, type, color, size, image_url, sale_price, quantity')
       .order('type').order('name')
     setProducts(data || [])
     setLoading(false)
   }
 
-  // Categorias únicas
-  const categories = [...new Set(products.map(p => p.type).filter(Boolean))].sort()
-
-  // Produtos filtrados por busca e categoria
+  // Produtos filtrados
   const filteredProducts = products.filter(p => {
     const q = search.toLowerCase()
     const matchSearch = !search ||
-      (p.name || '').toLowerCase().includes(q) ||
+      (p.name  || '').toLowerCase().includes(q) ||
       (p.brand || '').toLowerCase().includes(q) ||
       (p.color || '').toLowerCase().includes(q) ||
-      (p.type || '').toLowerCase().includes(q)
-    const matchCat = !activeCategory || p.type === activeCategory
-    return matchSearch && matchCat
+      (p.type  || '').toLowerCase().includes(q)
+    const matchMain = !activeMain || p.category === activeMain
+    const matchSub  = !activeSub  || p.type === activeSub
+    return matchSearch && matchMain && matchSub
   })
 
-  // Agrupa por categoria (apenas quando sem busca ativa)
-  const grouped = activeCategory || search
-    ? { [activeCategory || 'Resultados']: filteredProducts }
+  // Agrupa por subcategoria
+  const grouped = (activeSub || search)
+    ? { [activeSub || 'Resultados']: filteredProducts }
     : filteredProducts.reduce((acc, p) => {
         const key = p.type || 'Outros'
         if (!acc[key]) acc[key] = []
@@ -233,30 +237,43 @@ export default function Store() {
           </div>
         </div>
 
-        {/* Categorias */}
-        <div className="border-t border-rose-50 overflow-x-auto">
-          <div className="flex gap-2 px-4 py-2.5 max-w-3xl mx-auto">
-            <button
-              onClick={() => { setActiveCategory(null); setSearch('') }}
-              className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                !activeCategory && !search ? 'bg-rose-500 text-white shadow-sm' : 'bg-rose-50 text-rose-500 hover:bg-rose-100'
-              }`}
-            >
-              Todos
-            </button>
-            {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => { setActiveCategory(cat); setSearch('') }}
-                className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                  activeCategory === cat ? 'bg-rose-500 text-white shadow-sm' : 'bg-rose-50 text-rose-500 hover:bg-rose-100'
-                }`}
-              >
-                {cat}
+        {/* Categorias principais */}
+        <div className="border-t border-rose-50">
+          <div className="flex max-w-3xl mx-auto">
+            {[{ key: null, label: 'Todos' }, { key: 'Nail', label: '💅 Nail' }, { key: 'Lash', label: '✨ Lash' }].map(({ key, label }) => (
+              <button key={String(key)} onClick={() => { setActiveMain(key); setActiveSub(null); setSearch('') }}
+                className={`flex-1 py-2.5 text-xs font-bold transition-colors border-b-2 ${
+                  activeMain === key
+                    ? 'border-rose-500 text-rose-500'
+                    : 'border-transparent text-gray-400 hover:text-rose-400'
+                }`}>
+                {label}
               </button>
             ))}
           </div>
         </div>
+
+        {/* Subcategorias (quando Nail ou Lash selecionado) */}
+        {activeMain && (
+          <div className="border-t border-rose-50 bg-rose-50/50 overflow-x-auto">
+            <div className="flex gap-2 px-4 py-2 max-w-3xl mx-auto">
+              <button onClick={() => setActiveSub(null)}
+                className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                  !activeSub ? 'bg-rose-500 text-white' : 'bg-white text-rose-400 hover:bg-rose-100 border border-rose-200'
+                }`}>
+                Todos
+              </button>
+              {(SUBCATEGORIES[activeMain] || []).map(sub => (
+                <button key={sub} onClick={() => setActiveSub(sub)}
+                  className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                    activeSub === sub ? 'bg-rose-500 text-white' : 'bg-white text-rose-400 hover:bg-rose-100 border border-rose-200'
+                  }`}>
+                  {sub}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Catálogo */}

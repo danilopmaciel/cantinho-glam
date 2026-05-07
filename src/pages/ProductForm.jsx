@@ -66,8 +66,13 @@ export default function ProductForm() {
   const [aiMessage, setAiMessage]   = useState('')  // '' | 'ok' | 'erro'
   const [aiStatus, setAiStatus]     = useState('')  // '' | 'ok' | 'error'
 
+  const SUBCATEGORIES = {
+    Nail: ['Esmalte gel', 'Gel', 'Nail Art', 'Preparadores', 'Limpeza', 'Decorações', 'Ferramentas'],
+    Lash: ['Cílios', 'Cola adesivadora', 'Preparadores', 'Limpeza', 'Ferramentas'],
+  }
+
   const [form, setForm] = useState({
-    name: '', brand: '', type: '', color: '', size: '',
+    name: '', brand: '', category: 'Nail', type: '', color: '', size: '',
     purchase_price: '', profit_margin: '', sale_price: '',
     quantity: '',
   })
@@ -85,9 +90,12 @@ export default function ProductForm() {
     } else if (data) {
       setCurrentStock(data.quantity ?? 0)
       setForm({
-        name:  data.name  || '',
-        brand: data.brand || '', type: data.type || '',
-        color: data.color || '', size: data.size || '',
+        name:     data.name     || '',
+        brand:    data.brand    || '',
+        category: data.category || 'Nail',
+        type:     data.type     || '',
+        color:    data.color    || '',
+        size:     data.size     || '',
         purchase_price: data.purchase_price?.toString() || '',
         profit_margin:  data.profit_margin?.toString() || '',
         sale_price:     data.sale_price?.toString() || '',
@@ -303,9 +311,12 @@ export default function ProductForm() {
         : (parseInt(form.quantity) || 0)                     // novo: quantidade informada
 
       const productData = {
-        name:  form.name.trim(),
-        brand: form.brand.trim() || null, type: form.type.trim() || null,
-        color: form.color.trim() || null, size: form.size.trim() || null,
+        name:     form.name.trim(),
+        brand:    form.brand.trim()    || null,
+        category: form.category        || null,
+        type:     form.type.trim()     || null,
+        color:    form.color.trim()    || null,
+        size:     form.size.trim()     || null,
         purchase_price: parseFloat(form.purchase_price),
         profit_margin:  parseFloat(form.profit_margin) || 0,
         sale_price:     parseFloat(form.sale_price) || parseFloat(form.purchase_price),
@@ -465,19 +476,41 @@ export default function ProductForm() {
             className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white" />
         </div>
 
-        {/* Marca e Tipo */}
+        {/* Marca */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1.5">Marca</label>
+          <input type="text" value={form.brand} onChange={(e) => handleChange('brand', e.target.value)}
+            placeholder="Ex: Alletare, Macrilan..."
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white" />
+        </div>
+
+        {/* Categoria e Subcategoria */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Marca</label>
-            <input type="text" value={form.brand} onChange={(e) => handleChange('brand', e.target.value)}
-              placeholder="Ex: MAC, L'Oréal..."
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white" />
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Categoria</label>
+            <div className="flex rounded-xl border border-gray-200 overflow-hidden">
+              {['Nail', 'Lash'].map(cat => (
+                <button key={cat} type="button"
+                  onClick={() => { handleChange('category', cat); handleChange('type', '') }}
+                  className={`flex-1 py-3 text-sm font-bold transition-colors ${
+                    form.category === cat
+                      ? 'bg-rose-500 text-white'
+                      : 'bg-white text-gray-500 hover:bg-rose-50'
+                  }`}>
+                  {cat === 'Nail' ? '💅 Nail' : '✨ Lash'}
+                </button>
+              ))}
+            </div>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tipo</label>
-            <input type="text" value={form.type} onChange={(e) => handleChange('type', e.target.value)}
-              placeholder="Ex: Batom, Base, Sérum..."
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white" />
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Subcategoria</label>
+            <select value={form.type} onChange={(e) => handleChange('type', e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-rose-400 bg-white">
+              <option value="">Selecione...</option>
+              {(SUBCATEGORIES[form.category] || []).map(sub => (
+                <option key={sub} value={sub}>{sub}</option>
+              ))}
+            </select>
           </div>
         </div>
 
