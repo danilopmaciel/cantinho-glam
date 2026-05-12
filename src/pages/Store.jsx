@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useStoreAuth } from '../contexts/StoreAuthContext'
 import {
   ShoppingCart, X, Package, MessageCircle,
-  Search, User, LogOut, ChevronDown, Instagram,
+  Search, User, LogOut, ChevronDown, Instagram, ArrowRight,
 } from 'lucide-react'
 
 const WHATSAPP    = '5514991116961'
@@ -14,18 +14,66 @@ const STORE_NAME  = 'Cantinho Glam'
 const fmt = (v) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0)
 
+// Imagem com lazy loading e placeholder
+function ProductImage({ src, alt, className, inStock }) {
+  const [loaded, setLoaded] = useState(false)
+  const [error,  setError]  = useState(false)
+
+  return (
+    <div className={`relative aspect-square bg-gradient-to-br from-rose-50 to-pink-50 overflow-hidden`}>
+      {src && !error ? (
+        <>
+          {/* Placeholder shimmer enquanto carrega */}
+          {!loaded && (
+            <div className="absolute inset-0 bg-gradient-to-r from-rose-50 via-pink-100 to-rose-50 animate-pulse" />
+          )}
+          <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            decoding="async"
+            onLoad={() => setLoaded(true)}
+            onError={() => setError(true)}
+            className={`w-full h-full object-cover transition-all duration-300 group-hover:scale-105
+              ${loaded ? 'opacity-100' : 'opacity-0'}
+              ${!inStock ? 'opacity-60' : ''}
+              ${className || ''}`}
+          />
+        </>
+      ) : (
+        <div className="w-full h-full flex items-center justify-center">
+          <Package className="w-10 h-10 text-rose-200" />
+        </div>
+      )}
+      {!inStock && (
+        <div className="absolute inset-0 bg-gray-900/40 flex items-center justify-center">
+          <span className="bg-white text-gray-700 text-xs font-bold px-3 py-1.5 rounded-full shadow-md">
+            Em breve ✨
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Store() {
   const { user, profile, saveOrder } = useStoreAuth()
   const navigate = useNavigate()
 
-  const [products, setProducts]           = useState([])
-  const [cart, setCart]                   = useState([])
-  const [showCart, setShowCart]           = useState(false)
-  const [loading, setLoading]             = useState(true)
-  const [search, setSearch]                 = useState('')
-  const [activeMain, setActiveMain]         = useState(null)   // null | 'Nail' | 'Lash'
-  const [activeSub, setActiveSub]           = useState(null)
-  const [showUserMenu, setShowUserMenu]     = useState(false)
+  const [products, setProducts]         = useState([])
+  const [cart, setCart]                 = useState([])
+  const [showCart, setShowCart]         = useState(false)
+  const [loading, setLoading]           = useState(true)
+  const [search, setSearch]             = useState('')
+  const [activeMain, setActiveMain]     = useState(null)   // null | 'Nail' | 'Lash'
+  const [activeSub, setActiveSub]       = useState(null)
+  const [showUserMenu, setShowUserMenu] = useState(false)
+
+  // Modal de checkout para visitantes
+  const [showCheckout, setShowCheckout] = useState(false)
+  const [guestName,    setGuestName]    = useState('')
+  const [guestPhone,   setGuestPhone]   = useState('')
+  const [sendingWA,    setSendingWA]    = useState(false)
 
   const SUBCATEGORIES = {
     Nail: ['Esmalte gel', 'Gel', 'Nail Art', 'Preparadores', 'Limpeza', 'Decorações', 'Ferramentas'],
@@ -42,6 +90,14 @@ export default function Store() {
   useEffect(() => {
     localStorage.setItem('cantinho_cart', JSON.stringify(cart))
   }, [cart])
+
+  // Preenche dados do guest com perfil se existir
+  useEffect(() => {
+    if (profile) {
+      setGuestName(profile.name || '')
+      setGuestPhone(profile.phone || '')
+    }
+  }, [profile])
 
   // Fecha menu de usuário ao clicar fora
   useEffect(() => {
@@ -114,22 +170,28 @@ export default function Store() {
   const totalItems = cart.reduce((s, i) => s + i.qty, 0)
   const totalPrice = cart.reduce((s, i) => s + i.sale_price * i.qty, 0)
 
-  const handleWhatsApp = async () => {
+  // Monta e envia a mensagem para o WhatsApp
+  const sendToWhatsApp = async ({ name, phone } = {}) => {
+    setSendingWA(true)
+    const effectiveName  = name  || profile?.name  || ''
+    const effectivePhone = phone || profile?.phone || ''
+
     const lines = cart.map(i => {
-      const name  = i.name || i.brand
+      const pName = i.name || i.brand
       const color = i.color ? ` (${i.color})` : ''
-      return `• ${name}${color} x${i.qty} — ${fmt(i.sale_price * i.qty)}`
+      return `• ${pName}${color} x${i.qty} — ${fmt(i.sale_price * i.qty)}`
     })
-    const nameStr = profile?.name ? `, ${profile.name}` : ''
+
     const text = [
       `🛍️ *Pedido - ${STORE_NAME}*`,
-      ...(profile?.name ? [`👤 ${profile.name}`] : []),
+      ...(effectiveName  ? [`👤 ${effectiveName}`]  : []),
+      ...(effectivePhone ? [`📱 ${effectivePhone}`] : []),
       '',
       ...lines,
       '',
       `💰 *Total: ${fmt(totalPrice)}*`,
       '',
-      `Gostaria de finalizar meu pedido${nameStr}! 😊`,
+      `Gostaria de finalizar meu pedido! 😊`,
     ].join('\n')
 
     // Salva pedido se logado
@@ -142,7 +204,28 @@ export default function Store() {
 
     setCart([])
     setShowCart(false)
+    setShowCheckout(false)
+    setSendingWA(false)
     window.open(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(text)}`, '_blank')
+  }
+
+  // Clique no botão principal de pedido
+  const handleOrderClick = () => {
+    if (user) {
+      // Logado: vai direto
+      sendToWhatsApp()
+    } else {
+      // Visitante: abre modal de captura
+      setShowCheckout(true)
+    }
+  }
+
+  const formatPhone = (v) => {
+    const digits = v.replace(/\D/g, '').slice(0, 11)
+    if (digits.length <= 2)  return digits
+    if (digits.length <= 7)  return `(${digits.slice(0,2)}) ${digits.slice(2)}`
+    if (digits.length <= 11) return `(${digits.slice(0,2)}) ${digits.slice(2,7)}-${digits.slice(7)}`
+    return v
   }
 
   const displayName = profile?.name || user?.email?.split('@')[0] || 'Usuário'
@@ -172,7 +255,7 @@ export default function Store() {
               <input
                 type="text"
                 value={search}
-                onChange={e => { setSearch(e.target.value); setActiveCategory(null) }}
+                onChange={e => { setSearch(e.target.value); setActiveMain(null); setActiveSub(null) }}
                 placeholder="Buscar produto..."
                 className="w-full border border-gray-200 rounded-full pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 bg-gray-50 placeholder-gray-400"
               />
@@ -229,7 +312,7 @@ export default function Store() {
               className="relative p-2 text-gray-500 hover:text-rose-500 transition-colors shrink-0">
               <ShoppingCart className="w-5 h-5" />
               {totalItems > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 bg-rose-500 text-white text-xs font-bold w-4.5 h-4.5 min-w-[18px] min-h-[18px] rounded-full flex items-center justify-center leading-none px-0.5">
+                <span className="absolute -top-0.5 -right-0.5 bg-rose-500 text-white text-xs font-bold min-w-[18px] min-h-[18px] rounded-full flex items-center justify-center leading-none px-0.5">
                   {totalItems > 9 ? '9+' : totalItems}
                 </span>
               )}
@@ -303,27 +386,7 @@ export default function Store() {
                   return (
                     <div key={p.id}
                       className="bg-white rounded-2xl overflow-hidden border border-rose-100 shadow-sm hover:shadow-md transition-all duration-200 group">
-                      {/* Imagem */}
-                      <div className="relative aspect-square bg-gradient-to-br from-rose-50 to-pink-50">
-                        {p.image_url ? (
-                          <img
-                            src={p.image_url}
-                            alt={p.name || p.brand}
-                            className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${!inStock ? 'opacity-60' : ''}`}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Package className="w-10 h-10 text-rose-200" />
-                          </div>
-                        )}
-                        {!inStock && (
-                          <div className="absolute inset-0 bg-gray-900/40 flex items-center justify-center">
-                            <span className="bg-white text-gray-700 text-xs font-bold px-3 py-1.5 rounded-full shadow-md">
-                              Em breve ✨
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                      <ProductImage src={p.image_url} alt={p.name || p.brand} inStock={inStock} />
 
                       {/* Info */}
                       <div className="p-3">
@@ -429,7 +492,7 @@ export default function Store() {
               ) : cart.map(item => (
                 <div key={item.id} className="flex items-center gap-3 bg-rose-50/50 rounded-2xl p-3 border border-rose-100">
                   {item.image_url
-                    ? <img src={item.image_url} alt={item.name} className="w-12 h-12 rounded-xl object-cover shrink-0" />
+                    ? <img src={item.image_url} alt={item.name} loading="lazy" decoding="async" className="w-12 h-12 rounded-xl object-cover shrink-0" />
                     : <div className="w-12 h-12 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
                         <Package className="w-5 h-5 text-rose-300" />
                       </div>
@@ -456,26 +519,116 @@ export default function Store() {
 
             {cart.length > 0 && (
               <div className="px-5 py-4 border-t border-gray-100 space-y-3">
-                {!user && (
-                  <p className="text-xs text-center text-gray-400">
-                    <Link to="/loja/entrar" className="text-rose-500 font-semibold">Entre na sua conta</Link>
-                    {' '}para salvar seu histórico de pedidos
-                  </p>
-                )}
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500 text-sm">Total do pedido</span>
                   <span className="font-black text-rose-500 text-xl tabular-nums">{fmt(totalPrice)}</span>
                 </div>
-                <button onClick={handleWhatsApp}
+                <button onClick={handleOrderClick}
                   className="w-full bg-green-500 hover:bg-green-600 active:scale-95 text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-200">
                   <MessageCircle className="w-5 h-5" />
                   Pedir pelo WhatsApp
                 </button>
+                {!user && (
+                  <p className="text-xs text-center text-gray-400 pb-1">
+                    <Link to="/loja/entrar" onClick={() => setShowCart(false)} className="text-rose-500 font-semibold">Entre na sua conta</Link>
+                    {' '}para salvar seu histórico de pedidos
+                  </p>
+                )}
               </div>
             )}
           </div>
         </div>
       )}
+
+      {/* Modal de checkout para visitante */}
+      {showCheckout && (
+        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowCheckout(false)} />
+          <div className="relative bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden">
+
+            {/* Header */}
+            <div className="px-5 pt-5 pb-4">
+              <div className="flex items-start justify-between mb-1">
+                <div>
+                  <h3 className="font-black text-gray-900 text-xl">Quase lá! 🛍️</h3>
+                  <p className="text-gray-400 text-sm mt-0.5">Deixe seu contato para facilitar o atendimento</p>
+                </div>
+                <button onClick={() => setShowCheckout(false)} className="p-1.5 text-gray-300 hover:text-gray-500 rounded-lg transition-colors -mt-1">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Formulário rápido */}
+            <div className="px-5 pb-3 space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Seu nome</label>
+                <input
+                  type="text"
+                  value={guestName}
+                  onChange={e => setGuestName(e.target.value)}
+                  placeholder="Como prefere ser chamado?"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 bg-gray-50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">WhatsApp</label>
+                <input
+                  type="tel"
+                  value={guestPhone}
+                  onChange={e => setGuestPhone(formatPhone(e.target.value))}
+                  placeholder="(14) 99999-9999"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 bg-gray-50"
+                />
+              </div>
+            </div>
+
+            {/* Ações */}
+            <div className="px-5 pb-5 pt-2 space-y-2.5">
+              {/* Botão principal: WhatsApp */}
+              <button
+                onClick={() => sendToWhatsApp({ name: guestName, phone: guestPhone })}
+                disabled={sendingWA}
+                className="w-full bg-green-500 hover:bg-green-600 active:scale-95 disabled:opacity-60 text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-200">
+                {sendingWA
+                  ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : <MessageCircle className="w-5 h-5" />
+                }
+                Enviar pedido pelo WhatsApp
+              </button>
+
+              {/* Separador */}
+              <div className="flex items-center gap-3 py-1">
+                <div className="flex-1 h-px bg-gray-100" />
+                <span className="text-xs text-gray-300 font-medium">ou</span>
+                <div className="flex-1 h-px bg-gray-100" />
+              </div>
+
+              {/* Botão criar conta */}
+              <Link
+                to="/loja/entrar"
+                onClick={() => setShowCheckout(false)}
+                className="w-full flex items-center justify-center gap-2 border-2 border-rose-400 text-rose-500 hover:bg-rose-50 font-bold py-3.5 rounded-2xl transition-all text-sm">
+                <User className="w-4 h-4" />
+                Criar conta / Entrar
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+
+              {/* Vantagens de criar conta */}
+              <div className="bg-rose-50 rounded-2xl p-3 space-y-1.5">
+                <p className="text-xs font-bold text-rose-500 mb-2">✨ Vantagens da conta:</p>
+                {['Salve seu endereço de entrega', 'Histórico de pedidos', 'Finalize pedidos mais rápido'].map(v => (
+                  <div key={v} className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-rose-400 rounded-full shrink-0" />
+                    <span className="text-xs text-gray-500">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
