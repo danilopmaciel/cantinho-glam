@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Plus, Search, Package, X, AlertTriangle, GitMerge } from 'lucide-react'
+import { compressImage } from '../utils/imageUtils'
+import { Plus, Search, Package, X, AlertTriangle, GitMerge, ImageIcon, CheckCircle2, Loader2 } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import ProductCard from '../components/ProductCard'
 
@@ -15,6 +16,14 @@ export default function Dashboard() {
   const [deleteId, setDeleteId] = useState(null)
   const [conflicts, setConflicts] = useState([])
   const [merging, setMerging] = useState(null)
+
+  // Geração de thumbnails
+  const [thumbStatus, setThumbStatus]   = useState('idle')   // 'idle' | 'running' | 'done'
+  const [thumbDone,   setThumbDone]     = useState(0)
+  const [thumbTotal,  setThumbTotal]    = useState(0)
+  const [thumbErrors, setThumbErrors]   = useState(0)
+  const [thumbLog,    setThumbLog]      = useState([])        // mensagens de erro
+
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -64,6 +73,72 @@ export default function Dashboard() {
       setProducts(products.filter(p => p.id !== deleteId))
     }
     setDeleteId(null)
+  }
+
+  const generateThumbnails = async () => {
+    setThumbStatus('running')
+    setThumbDone(0)
+    setThumbErrors(0)
+    setThumbLog([])
+
+    // Busca todos os produtos com imagem
+    const { data: all } = await supabase
+      .from('products')
+      .select('id, name, brand, image_url')
+      .not('image_url', 'is', null)
+
+    const withImage = (all || []).filter(p => p.image_url)
+    setThumbTotal(withImage.length)
+
+    if (withImage.length === 0) {
+      setThumbStatus('done')
+      return
+    }
+
+    let done = 0
+    let errors = 0
+    const log = []
+
+    for (const product of withImage) {
+      try {
+        // Baixa a imagem existente
+        const res = await fetch(`${product.image_url}?t=${Date.now()}`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const blob = await res.blob()
+
+        // Gera thumbnail 500px, 72 %
+        const thumbBlob = await compressImage(blob, { maxDim: 500, quality: 0.72 })
+
+        // Também recomprime versão full para 1200px, 82 % (economiza espaço nos antigos)
+        const fullBlob  = await compressImage(blob, { maxDim: 1200, quality: 0.82 })
+
+        const bucket = supabase.storage.from('product-images')
+        const opts   = { upsert: true, contentType: 'image/jpeg' }
+
+        await Promise.all([
+          bucket.upload(`${product.id}_thumb.jpg`, thumbBlob, opts),
+          bucket.upload(`${product.id}.jpg`,       fullBlob,  opts),
+        ])
+
+        // Garante que image_url aponta para o .jpg padronizado
+        await supabase
+          .from('products')
+          .update({ image_url: bucket.getPublicUrl(`${product.id}.jpg`).data.publicUrl })
+          .eq('id', product.id)
+
+        done++
+      } catch (err) {
+        errors++
+        const label = product.name || product.brand || product.id
+        log.push(`❌ ${label}: ${err.message}`)
+      }
+
+      setThumbDone(done)
+      setThumbErrors(errors)
+      setThumbLog([...log])
+    }
+
+    setThumbStatus('done')
   }
 
   const outOfStock  = products.filter(p => (p.quantity ?? 0) === 0)
@@ -219,6 +294,87 @@ export default function Dashboard() {
             ))}
           </div>
         )}
+        {/* Gerador de thumbnails */}
+        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-blue-500 shrink-0" />
+              <div>
+                <h3 className="font-bold text-blue-900 text-sm">Otimização de imagens</h3>
+                <p className="text-xs text-blue-500 mt-0.5">
+                  Gera thumbnails comprimidos para todos os produtos cadastrados
+                </p>
+              </div>
+            </div>
+
+            {thumbStatus === 'idle' && (
+              <button
+                onClick={generateThumbnails}
+                className="shrink-0 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5" />
+                Gerar thumbnails
+              </button>
+            )}
+
+            {thumbStatus === 'running' && (
+              <div className="flex items-center gap-2 text-blue-600 text-xs font-semibold">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Processando...
+              </div>
+            )}
+
+            {thumbStatus === 'done' && (
+              <div className="flex items-center gap-1.5 text-green-600 text-xs font-semibold">
+                <CheckCircle2 className="w-4 h-4" />
+                Concluído
+              </div>
+            )}
+          </div>
+
+          {/* Barra de progresso */}
+          {thumbStatus !== 'idle' && thumbTotal > 0 && (
+            <div className="space-y-1.5">
+              <div className="w-full bg-blue-200 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${(thumbDone / thumbTotal) * 100}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-xs text-blue-600">
+                <span>{thumbDone} de {thumbTotal} processados</span>
+                {thumbErrors > 0 && (
+                  <span className="text-red-500">{thumbErrors} erro{thumbErrors > 1 ? 's' : ''}</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Log de erros */}
+          {thumbLog.length > 0 && (
+            <div className="bg-red-50 border border-red-100 rounded-xl p-3 space-y-1 max-h-32 overflow-y-auto">
+              {thumbLog.map((msg, i) => (
+                <p key={i} className="text-xs text-red-600">{msg}</p>
+              ))}
+            </div>
+          )}
+
+          {/* Resultado final */}
+          {thumbStatus === 'done' && (
+            <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
+              <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+              <p className="text-xs text-green-700 font-medium">
+                {thumbDone} imagem{thumbDone !== 1 ? 'ns' : ''} otimizada{thumbDone !== 1 ? 's' : ''} com sucesso
+                {thumbErrors > 0 ? ` · ${thumbErrors} falha${thumbErrors > 1 ? 's' : ''} (veja acima)` : ''}
+              </p>
+              <button
+                onClick={() => { setThumbStatus('idle'); setThumbDone(0); setThumbTotal(0); setThumbErrors(0); setThumbLog([]) }}
+                className="ml-auto text-xs text-gray-400 hover:text-gray-600">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+
       </div>
 
       {/* FAB - Botão de adicionar */}
