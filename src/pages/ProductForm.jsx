@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { compressImage } from '../utils/imageUtils'
 import { ArrowLeft, Save, Camera, ImageIcon, X, TrendingUp, ZapOff, Package, History, Sparkles } from 'lucide-react'
 
 const ADJUSTMENT_REASONS = [
@@ -139,7 +140,7 @@ export default function ProductForm() {
 
   const handleImageSelect = (file) => {
     if (!file) return
-    if (file.size > 5 * 1024 * 1024) { setError('A imagem deve ter no máximo 5MB.'); return }
+    if (file.size > 30 * 1024 * 1024) { setError('A imagem deve ter no máximo 30 MB.'); return }
     setImageFile(file)
     setError('')
     setAiMessage('')
@@ -285,12 +286,24 @@ export default function ProductForm() {
 
   const uploadImage = async (productId) => {
     if (!imageFile) return existingImageUrl
-    const ext = imageFile.name.split('.').pop() || 'jpg'
-    const filename = `${productId}.${ext}`
-    const { error: uploadError } = await supabase.storage
-      .from('product-images').upload(filename, imageFile, { upsert: true })
-    if (uploadError) throw uploadError
-    const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(filename)
+
+    const bucket = supabase.storage.from('product-images')
+
+    // Comprime versão completa (lightbox): max 1200px, 82 %
+    const fullBlob  = await compressImage(imageFile, { maxDim: 1200, quality: 0.82 })
+    // Comprime thumbnail (grade da loja): max 500px, 72 %
+    const thumbBlob = await compressImage(imageFile, { maxDim: 500,  quality: 0.72 })
+
+    const opts = { upsert: true, contentType: 'image/jpeg' }
+    const [fullRes, thumbRes] = await Promise.all([
+      bucket.upload(`${productId}.jpg`,       fullBlob,  opts),
+      bucket.upload(`${productId}_thumb.jpg`, thumbBlob, opts),
+    ])
+
+    if (fullRes.error)  throw fullRes.error
+    if (thumbRes.error) console.warn('Thumb upload falhou:', thumbRes.error)
+
+    const { data: { publicUrl } } = bucket.getPublicUrl(`${productId}.jpg`)
     return publicUrl
   }
 
@@ -420,7 +433,7 @@ export default function ProductForm() {
                   <ImageIcon className="w-4 h-4" /> Galeria
                 </button>
               </div>
-              <p className="text-xs text-gray-400">JPG, PNG ou WEBP · máx. 5MB</p>
+              <p className="text-xs text-gray-400">JPG, PNG ou WEBP · máx. 30 MB · comprimido automaticamente</p>
             </div>
           )}
           <input ref={cameraInputRef} type="file" accept="image/*" capture="environment"

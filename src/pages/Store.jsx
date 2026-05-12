@@ -1,43 +1,57 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useStoreAuth } from '../contexts/StoreAuthContext'
+import { getThumbUrl } from '../utils/imageUtils'
 import {
   ShoppingCart, X, Package, MessageCircle,
-  Search, User, LogOut, ChevronDown, Instagram, ArrowRight,
+  Search, User, LogOut, ChevronDown, Instagram, ArrowRight, ZoomIn,
 } from 'lucide-react'
 
-const WHATSAPP    = '5514991116961'
-const INSTAGRAM   = 'https://www.instagram.com/cantinho.glam/'
-const STORE_NAME  = 'Cantinho Glam'
+const WHATSAPP   = '5514991116961'
+const INSTAGRAM  = 'https://www.instagram.com/cantinho.glam/'
+const STORE_NAME = 'Cantinho Glam'
 
 const fmt = (v) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0)
 
-// Imagem com lazy loading e placeholder
-function ProductImage({ src, alt, className, inStock }) {
+// ── Imagem com lazy loading, shimmer e fallback ───────────────────────────────
+function ProductImage({ src, alt, inStock, thumb = true }) {
+  const computedSrc = thumb ? (getThumbUrl(src) || src) : src
+  const [imgSrc, setImgSrc] = useState(computedSrc)
   const [loaded, setLoaded] = useState(false)
   const [error,  setError]  = useState(false)
 
+  useEffect(() => {
+    const s = thumb ? (getThumbUrl(src) || src) : src
+    setImgSrc(s)
+    setLoaded(false)
+    setError(false)
+  }, [src, thumb])
+
+  const handleError = () => {
+    // Thumb não encontrado → tenta URL original
+    if (imgSrc !== src) { setImgSrc(src); return }
+    setError(true)
+  }
+
   return (
-    <div className={`relative aspect-square bg-gradient-to-br from-rose-50 to-pink-50 overflow-hidden`}>
+    <div className="relative w-full h-full bg-gradient-to-br from-rose-50 to-pink-50">
       {src && !error ? (
         <>
-          {/* Placeholder shimmer enquanto carrega */}
           {!loaded && (
             <div className="absolute inset-0 bg-gradient-to-r from-rose-50 via-pink-100 to-rose-50 animate-pulse" />
           )}
           <img
-            src={src}
+            src={imgSrc}
             alt={alt}
             loading="lazy"
             decoding="async"
             onLoad={() => setLoaded(true)}
-            onError={() => setError(true)}
-            className={`w-full h-full object-cover transition-all duration-300 group-hover:scale-105
+            onError={handleError}
+            className={`w-full h-full object-cover transition-all duration-300
               ${loaded ? 'opacity-100' : 'opacity-0'}
-              ${!inStock ? 'opacity-60' : ''}
-              ${className || ''}`}
+              ${!inStock ? 'opacity-60' : ''}`}
           />
         </>
       ) : (
@@ -56,20 +70,132 @@ function ProductImage({ src, alt, className, inStock }) {
   )
 }
 
+// ── Lightbox ──────────────────────────────────────────────────────────────────
+function Lightbox({ product, cart, onClose, onAddToCart, onUpdateQty }) {
+  const inStock  = (product.quantity ?? 0) > 0
+  const cartItem = cart.find(i => i.id === product.id)
+
+  // Fecha com Esc
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden flex flex-col"
+        style={{ maxHeight: '92vh' }}>
+
+        {/* Imagem em alta qualidade */}
+        <div className="relative bg-gray-900 flex-shrink-0" style={{ maxHeight: '55vh' }}>
+          <div className="aspect-square sm:aspect-video w-full overflow-hidden" style={{ maxHeight: '55vh' }}>
+            <ProductImage
+              src={product.image_url}
+              alt={product.name || product.brand}
+              inStock={inStock}
+              thumb={false}
+            />
+          </div>
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors z-10">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Info + ações */}
+        <div className="overflow-y-auto p-5 space-y-4 flex-1">
+          <div>
+            <h3 className="font-black text-gray-900 text-xl leading-snug">
+              {product.name || product.brand}
+            </h3>
+            {product.name && product.brand && (
+              <p className="text-sm text-gray-400 mt-0.5">{product.brand}</p>
+            )}
+            <div className="flex flex-wrap gap-2 mt-2.5">
+              {product.color && (
+                <span className="text-xs bg-rose-50 text-rose-500 px-3 py-1 rounded-full font-semibold border border-rose-100">
+                  {product.color}
+                </span>
+              )}
+              {product.size && (
+                <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full font-semibold">
+                  {product.size}
+                </span>
+              )}
+              {product.type && (
+                <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full font-semibold">
+                  {product.type}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <p className="font-black text-rose-500 text-3xl tabular-nums">{fmt(product.sale_price)}</p>
+
+          {inStock ? (
+            cartItem ? (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center border-2 border-rose-200 rounded-2xl overflow-hidden bg-white flex-1">
+                  <button
+                    onClick={() => onUpdateQty(product.id, -1)}
+                    className="flex-1 py-3 text-rose-400 hover:bg-rose-50 text-xl font-bold transition-colors">
+                    −
+                  </button>
+                  <span className="px-4 text-lg font-black text-gray-800 border-x-2 border-rose-100 tabular-nums">
+                    {cartItem.qty}
+                  </span>
+                  <button
+                    onClick={() => onUpdateQty(product.id, +1)}
+                    className="flex-1 py-3 text-rose-400 hover:bg-rose-50 text-xl font-bold transition-colors">
+                    +
+                  </button>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="bg-rose-500 hover:bg-rose-600 text-white font-bold px-5 py-3.5 rounded-2xl transition-colors text-sm shrink-0">
+                  Ver carrinho
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => onAddToCart(product)}
+                className="w-full bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-200 text-lg">
+                <ShoppingCart className="w-5 h-5" />
+                Adicionar ao carrinho
+              </button>
+            )
+          ) : (
+            <div className="bg-gray-50 rounded-2xl py-4 text-center text-gray-400 text-sm font-semibold">
+              Produto indisponível no momento
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Store ─────────────────────────────────────────────────────────────────────
 export default function Store() {
   const { user, profile, saveOrder } = useStoreAuth()
-  const navigate = useNavigate()
 
   const [products, setProducts]         = useState([])
   const [cart, setCart]                 = useState([])
   const [showCart, setShowCart]         = useState(false)
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
-  const [activeMain, setActiveMain]     = useState(null)   // null | 'Nail' | 'Lash'
+  const [activeMain, setActiveMain]     = useState(null)
   const [activeSub, setActiveSub]       = useState(null)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [lightbox, setLightbox]         = useState(null)   // produto aberto no zoom
 
-  // Modal de checkout para visitantes
+  // Modal checkout para visitantes
   const [showCheckout, setShowCheckout] = useState(false)
   const [guestName,    setGuestName]    = useState('')
   const [guestPhone,   setGuestPhone]   = useState('')
@@ -91,7 +217,6 @@ export default function Store() {
     localStorage.setItem('cantinho_cart', JSON.stringify(cart))
   }, [cart])
 
-  // Preenche dados do guest com perfil se existir
   useEffect(() => {
     if (profile) {
       setGuestName(profile.name || '')
@@ -99,7 +224,7 @@ export default function Store() {
     }
   }, [profile])
 
-  // Fecha menu de usuário ao clicar fora
+  // Fecha menu ao clicar fora
   useEffect(() => {
     const handler = (e) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target))
@@ -108,6 +233,13 @@ export default function Store() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  // Bloqueia scroll do body quando lightbox ou modais abertos
+  useEffect(() => {
+    const blocked = !!(lightbox || showCheckout || showCart)
+    document.body.style.overflow = blocked ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [lightbox, showCheckout, showCart])
 
   const fetchProducts = async () => {
     const { data } = await supabase
@@ -118,7 +250,6 @@ export default function Store() {
     setLoading(false)
   }
 
-  // Produtos filtrados
   const filteredProducts = products.filter(p => {
     const q = search.toLowerCase()
     const matchSearch = !search ||
@@ -131,7 +262,6 @@ export default function Store() {
     return matchSearch && matchMain && matchSub
   })
 
-  // Agrupa por subcategoria
   const grouped = (activeSub || search)
     ? { [activeSub || 'Resultados']: filteredProducts }
     : filteredProducts.reduce((acc, p) => {
@@ -170,16 +300,15 @@ export default function Store() {
   const totalItems = cart.reduce((s, i) => s + i.qty, 0)
   const totalPrice = cart.reduce((s, i) => s + i.sale_price * i.qty, 0)
 
-  // Monta e envia a mensagem para o WhatsApp
   const sendToWhatsApp = async ({ name, phone } = {}) => {
     setSendingWA(true)
     const effectiveName  = name  || profile?.name  || ''
     const effectivePhone = phone || profile?.phone || ''
 
     const lines = cart.map(i => {
-      const pName = i.name || i.brand
-      const color = i.color ? ` (${i.color})` : ''
-      return `• ${pName}${color} x${i.qty} — ${fmt(i.sale_price * i.qty)}`
+      const n = i.name || i.brand
+      const c = i.color ? ` (${i.color})` : ''
+      return `• ${n}${c} x${i.qty} — ${fmt(i.sale_price * i.qty)}`
     })
 
     const text = [
@@ -194,11 +323,10 @@ export default function Store() {
       `Gostaria de finalizar meu pedido! 😊`,
     ].join('\n')
 
-    // Salva pedido se logado
     if (user) {
       await saveOrder(
         cart.map(i => ({ id: i.id, name: i.name || i.brand, color: i.color, qty: i.qty, price: i.sale_price })),
-        totalPrice
+        totalPrice,
       )
     }
 
@@ -209,23 +337,16 @@ export default function Store() {
     window.open(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(text)}`, '_blank')
   }
 
-  // Clique no botão principal de pedido
   const handleOrderClick = () => {
-    if (user) {
-      // Logado: vai direto
-      sendToWhatsApp()
-    } else {
-      // Visitante: abre modal de captura
-      setShowCheckout(true)
-    }
+    if (user) sendToWhatsApp()
+    else setShowCheckout(true)
   }
 
   const formatPhone = (v) => {
-    const digits = v.replace(/\D/g, '').slice(0, 11)
-    if (digits.length <= 2)  return digits
-    if (digits.length <= 7)  return `(${digits.slice(0,2)}) ${digits.slice(2)}`
-    if (digits.length <= 11) return `(${digits.slice(0,2)}) ${digits.slice(2,7)}-${digits.slice(7)}`
-    return v
+    const d = v.replace(/\D/g, '').slice(0, 11)
+    if (d.length <= 2)  return d
+    if (d.length <= 7)  return `(${d.slice(0,2)}) ${d.slice(2)}`
+    return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`
   }
 
   const displayName = profile?.name || user?.email?.split('@')[0] || 'Usuário'
@@ -243,13 +364,11 @@ export default function Store() {
         <div className="max-w-3xl mx-auto px-4 py-3">
           <div className="flex items-center gap-3">
 
-            {/* Logo */}
             <Link to="/loja" className="flex items-center gap-1.5 shrink-0">
               <span className="text-lg">✨</span>
               <span className="font-black text-rose-500 text-lg leading-none">{STORE_NAME}</span>
             </Link>
 
-            {/* Busca */}
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <input
@@ -260,20 +379,19 @@ export default function Store() {
                 className="w-full border border-gray-200 rounded-full pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 bg-gray-50 placeholder-gray-400"
               />
               {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <button onClick={() => setSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
 
-            {/* Usuário */}
             <div ref={userMenuRef} className="relative shrink-0">
               {user ? (
                 <>
                   <button
                     onClick={() => setShowUserMenu(v => !v)}
-                    className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 px-3 py-2 rounded-full text-sm font-semibold transition-colors"
-                  >
+                    className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 px-3 py-2 rounded-full text-sm font-semibold transition-colors">
                     <div className="w-5 h-5 bg-rose-500 rounded-full flex items-center justify-center shrink-0">
                       <span className="text-white text-xs font-bold">{displayName[0]?.toUpperCase()}</span>
                     </div>
@@ -307,7 +425,6 @@ export default function Store() {
               )}
             </div>
 
-            {/* Carrinho */}
             <button onClick={() => setShowCart(true)}
               className="relative p-2 text-gray-500 hover:text-rose-500 transition-colors shrink-0">
               <ShoppingCart className="w-5 h-5" />
@@ -324,7 +441,8 @@ export default function Store() {
         <div className="border-t border-rose-50">
           <div className="flex max-w-3xl mx-auto">
             {[{ key: null, label: 'Todos' }, { key: 'Nail', label: '💅 Nail' }, { key: 'Lash', label: '✨ Lash' }].map(({ key, label }) => (
-              <button key={String(key)} onClick={() => { setActiveMain(key); setActiveSub(null); setSearch('') }}
+              <button key={String(key)}
+                onClick={() => { setActiveMain(key); setActiveSub(null); setSearch('') }}
                 className={`flex-1 py-2.5 text-xs font-bold transition-colors border-b-2 ${
                   activeMain === key
                     ? 'border-rose-500 text-rose-500'
@@ -336,7 +454,7 @@ export default function Store() {
           </div>
         </div>
 
-        {/* Subcategorias (quando Nail ou Lash selecionado) */}
+        {/* Subcategorias */}
         {activeMain && (
           <div className="border-t border-rose-50 bg-rose-50/50 overflow-x-auto">
             <div className="flex gap-2 px-4 py-2 max-w-3xl mx-auto">
@@ -385,8 +503,26 @@ export default function Store() {
                   const inCart  = cart.find(i => i.id === p.id)
                   return (
                     <div key={p.id}
-                      className="bg-white rounded-2xl overflow-hidden border border-rose-100 shadow-sm hover:shadow-md transition-all duration-200 group">
-                      <ProductImage src={p.image_url} alt={p.name || p.brand} inStock={inStock} />
+                      onClick={() => setLightbox(p)}
+                      className="bg-white rounded-2xl overflow-hidden border border-rose-100 shadow-sm hover:shadow-md transition-all duration-200 group cursor-pointer">
+
+                      {/* Imagem com thumbnail */}
+                      <div className="aspect-square relative overflow-hidden">
+                        <ProductImage
+                          src={p.image_url}
+                          alt={p.name || p.brand}
+                          inStock={inStock}
+                          thumb
+                        />
+                        {/* Ícone de zoom no hover */}
+                        {p.image_url && (
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                            <div className="bg-white/90 rounded-full p-1.5 shadow">
+                              <ZoomIn className="w-4 h-4 text-rose-500" />
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
                       {/* Info */}
                       <div className="p-3">
@@ -402,19 +538,22 @@ export default function Store() {
 
                         {inStock ? (
                           inCart ? (
-                            <div className="flex items-center justify-between mt-2 bg-rose-50 rounded-xl px-1 py-0.5 border border-rose-100">
+                            <div
+                              onClick={e => e.stopPropagation()}
+                              className="flex items-center justify-between mt-2 bg-rose-50 rounded-xl px-1 py-0.5 border border-rose-100">
                               <button onClick={() => updateQty(p.id, -1)}
                                 className="w-8 h-8 flex items-center justify-center text-rose-500 font-bold text-lg hover:bg-rose-100 rounded-lg transition-colors">
                                 −
                               </button>
                               <span className="text-sm font-bold text-gray-800">{inCart.qty}</span>
-                              <button onClick={() => updateQty(p.id, 1)}
+                              <button onClick={() => updateQty(p.id, +1)}
                                 className="w-8 h-8 flex items-center justify-center text-rose-500 font-bold text-lg hover:bg-rose-100 rounded-lg transition-colors">
                                 +
                               </button>
                             </div>
                           ) : (
-                            <button onClick={() => addToCart(p)}
+                            <button
+                              onClick={e => { e.stopPropagation(); addToCart(p) }}
                               className="w-full mt-2 bg-rose-500 hover:bg-rose-600 active:scale-95 text-white text-xs font-bold py-2.5 rounded-xl transition-all shadow-sm shadow-rose-200">
                               Adicionar
                             </button>
@@ -506,7 +645,7 @@ export default function Store() {
                     <div className="flex items-center border border-rose-200 rounded-xl overflow-hidden bg-white">
                       <button onClick={() => updateQty(item.id, -1)} className="px-2.5 py-1.5 text-rose-400 hover:bg-rose-50 text-sm font-bold transition-colors">−</button>
                       <span className="px-2 text-sm font-bold text-gray-800 border-x border-rose-100 tabular-nums">{item.qty}</span>
-                      <button onClick={() => updateQty(item.id, 1)} className="px-2.5 py-1.5 text-rose-400 hover:bg-rose-50 text-sm font-bold transition-colors">+</button>
+                      <button onClick={() => updateQty(item.id, +1)} className="px-2.5 py-1.5 text-rose-400 hover:bg-rose-50 text-sm font-bold transition-colors">+</button>
                     </div>
                     <button onClick={() => removeFromCart(item.id)}
                       className="p-1.5 text-gray-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-colors">
@@ -540,52 +679,40 @@ export default function Store() {
         </div>
       )}
 
-      {/* Modal de checkout para visitante */}
+      {/* Modal checkout visitante */}
       {showCheckout && (
         <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowCheckout(false)} />
           <div className="relative bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden">
-
-            {/* Header */}
             <div className="px-5 pt-5 pb-4">
               <div className="flex items-start justify-between mb-1">
                 <div>
                   <h3 className="font-black text-gray-900 text-xl">Quase lá! 🛍️</h3>
                   <p className="text-gray-400 text-sm mt-0.5">Deixe seu contato para facilitar o atendimento</p>
                 </div>
-                <button onClick={() => setShowCheckout(false)} className="p-1.5 text-gray-300 hover:text-gray-500 rounded-lg transition-colors -mt-1">
+                <button onClick={() => setShowCheckout(false)}
+                  className="p-1.5 text-gray-300 hover:text-gray-500 rounded-lg transition-colors -mt-1">
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            {/* Formulário rápido */}
             <div className="px-5 pb-3 space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">Seu nome</label>
-                <input
-                  type="text"
-                  value={guestName}
-                  onChange={e => setGuestName(e.target.value)}
+                <input type="text" value={guestName} onChange={e => setGuestName(e.target.value)}
                   placeholder="Como prefere ser chamado?"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 bg-gray-50"
-                />
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 bg-gray-50" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">WhatsApp</label>
-                <input
-                  type="tel"
-                  value={guestPhone}
-                  onChange={e => setGuestPhone(formatPhone(e.target.value))}
+                <input type="tel" value={guestPhone} onChange={e => setGuestPhone(formatPhone(e.target.value))}
                   placeholder="(14) 99999-9999"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 bg-gray-50"
-                />
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 bg-gray-50" />
               </div>
             </div>
 
-            {/* Ações */}
             <div className="px-5 pb-5 pt-2 space-y-2.5">
-              {/* Botão principal: WhatsApp */}
               <button
                 onClick={() => sendToWhatsApp({ name: guestName, phone: guestPhone })}
                 disabled={sendingWA}
@@ -597,24 +724,19 @@ export default function Store() {
                 Enviar pedido pelo WhatsApp
               </button>
 
-              {/* Separador */}
               <div className="flex items-center gap-3 py-1">
                 <div className="flex-1 h-px bg-gray-100" />
                 <span className="text-xs text-gray-300 font-medium">ou</span>
                 <div className="flex-1 h-px bg-gray-100" />
               </div>
 
-              {/* Botão criar conta */}
-              <Link
-                to="/loja/entrar"
-                onClick={() => setShowCheckout(false)}
+              <Link to="/loja/entrar" onClick={() => setShowCheckout(false)}
                 className="w-full flex items-center justify-center gap-2 border-2 border-rose-400 text-rose-500 hover:bg-rose-50 font-bold py-3.5 rounded-2xl transition-all text-sm">
                 <User className="w-4 h-4" />
                 Criar conta / Entrar
                 <ArrowRight className="w-4 h-4" />
               </Link>
 
-              {/* Vantagens de criar conta */}
               <div className="bg-rose-50 rounded-2xl p-3 space-y-1.5">
                 <p className="text-xs font-bold text-rose-500 mb-2">✨ Vantagens da conta:</p>
                 {['Salve seu endereço de entrega', 'Histórico de pedidos', 'Finalize pedidos mais rápido'].map(v => (
@@ -629,6 +751,16 @@ export default function Store() {
         </div>
       )}
 
+      {/* Lightbox */}
+      {lightbox && (
+        <Lightbox
+          product={lightbox}
+          cart={cart}
+          onClose={() => setLightbox(null)}
+          onAddToCart={(p) => { addToCart(p) }}
+          onUpdateQty={updateQty}
+        />
+      )}
     </div>
   )
 }
