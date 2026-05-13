@@ -15,30 +15,36 @@ const STORE_NAME = 'Cantinho Glam'
 const fmt = (v) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0)
 
-// ── Imagem com lazy loading, shimmer e fallback ───────────────────────────────
+// ── Imagem com lazy loading, shimmer e fallback sem piscar ───────────────────
 function ProductImage({ src, alt, inStock, thumb = true }) {
-  const computedSrc = thumb ? (getThumbUrl(src) || src) : src
-  const [imgSrc, setImgSrc] = useState(computedSrc)
-  const [loaded, setLoaded] = useState(false)
-  const [error,  setError]  = useState(false)
+  const primarySrc = thumb ? (getThumbUrl(src) || src) : src
+  const [imgSrc,  setImgSrc]  = useState(primarySrc)
+  const [loaded,  setLoaded]  = useState(false)
+  const [error,   setError]   = useState(false)
+  const [retried, setRetried] = useState(false)  // já tentou fallback?
 
   useEffect(() => {
-    const s = thumb ? (getThumbUrl(src) || src) : src
-    setImgSrc(s)
+    setImgSrc(thumb ? (getThumbUrl(src) || src) : src)
     setLoaded(false)
     setError(false)
+    setRetried(false)
   }, [src, thumb])
 
   const handleError = () => {
-    // Thumb não encontrado → tenta URL original
-    if (imgSrc !== src) { setImgSrc(src); return }
-    setError(true)
+    if (!retried && imgSrc !== src) {
+      // Thumb não encontrado → tenta URL original silenciosamente
+      setRetried(true)
+      setImgSrc(src)
+    } else {
+      setError(true)
+    }
   }
 
   return (
     <div className="relative w-full h-full bg-gradient-to-br from-rose-50 to-pink-50">
       {src && !error ? (
         <>
+          {/* Shimmer só antes do primeiro carregamento */}
           {!loaded && (
             <div className="absolute inset-0 bg-gradient-to-r from-rose-50 via-pink-100 to-rose-50 animate-pulse" />
           )}
@@ -49,9 +55,9 @@ function ProductImage({ src, alt, inStock, thumb = true }) {
             decoding="async"
             onLoad={() => setLoaded(true)}
             onError={handleError}
-            className={`w-full h-full object-cover transition-all duration-300
+            className={`w-full h-full object-cover transition-opacity duration-300
               ${loaded ? 'opacity-100' : 'opacity-0'}
-              ${!inStock ? 'opacity-60' : ''}`}
+              ${!inStock && loaded ? 'opacity-60' : ''}`}
           />
         </>
       ) : (
